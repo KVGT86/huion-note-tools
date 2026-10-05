@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=HuionNote
+GenericName=Digital Notebook Companion
+Comment=Huion Note X10 Companion & Digital Notebook
+Exec=/home/caleb/huion-notes/start_app.py
+Icon=huionnote
+Terminal=false
+Categories=Utility;Graphics;Office;
+StartupWMClass=huionnote
+Keywords=huion;note;tablet;handwriting;drawing;digital;

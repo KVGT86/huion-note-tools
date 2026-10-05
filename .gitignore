@@ -1,0 +1,42 @@
+# Python virtual environments & bytecode
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.btsnoop
+build/
+dist/
+
+# Testing & Cache
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# User Notes & Storage (Must remain outside git repository)
+notes_output/
+exported_notes/
+HuionNotes/
+*.bak.svg
+
+# Environment variables & secrets
+.env
+.env.*
+*.env
+*.key
+*.pem
+*.token
+*.secret
+
+# Logs
+*.log
+
+# OS & Editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
