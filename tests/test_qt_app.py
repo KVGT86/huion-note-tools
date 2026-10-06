@@ -42,7 +42,36 @@ def test_qt_shell_builds_and_routes(tmp_path):
     window = HuionNoteWindow(pipeline, FakeBridge())
 
     assert window.pages.count() == 2
+    assert window.pages.currentIndex() == 0
+    assert window.page_title.text() == "Notes"
     window._show_page(1)
-    assert window.page_title.text() == "Document library"
+    assert window.page_title.text() == "Live notebook"
+    from types import SimpleNamespace
+    window.canvas.add_point(SimpleNamespace(x=4000, y=5000, pressure=1000, touch=True))
+    window.canvas.add_point(SimpleNamespace(x=5000, y=6000, pressure=6000, touch=True))
+    window.canvas.add_point(SimpleNamespace(x=5000, y=6000, pressure=0, touch=False))
+    first = window.canvas.samples()
+    window.new_page()
+    assert window.canvas.samples() == []
+    window.canvas.add_point(SimpleNamespace(x=10000, y=5000, pressure=2000, touch=True))
+    current = window.canvas.samples()
+    window.browse_live(-1)
+    assert window.canvas.samples() == first
+    window.save_live()
+    window.browse_live(1)
+    assert window.canvas.samples() == current
+    window.toggle_presentation()
+    assert window._presentation and not window.sidebar.isVisible()
+    window.leave_presentation()
+    assert not window._presentation
+    from PySide6.QtCore import Qt
+    window.resize(860, 580)
+    window._show_page(0)
+    window.detail_tabs.setCurrentIndex(2)
+    app.processEvents()
+    window.adapt_review()
+    assert window.review_splitter.orientation() == Qt.Orientation.Vertical
     window.close()
     app.processEvents()
+    import json
+    assert json.loads((tmp_path / ".live-draft.json").read_text())["strokes"] == [[list(p) for p in s] for s in current]

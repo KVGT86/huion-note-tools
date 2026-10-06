@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import os
 import re
+import json
+import shutil
+import tempfile
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +20,23 @@ from .frontmatter import build_frontmatter, render_frontmatter
 from .models import ConversionResult, Note
 from .pipeline import NoteRegistry, SyncPipeline
 from .store import CollisionResolver, JsonStore, MarkdownStore, SvgStore
+
+
+def create_application() -> "HuionApplication":
+    """Compose the shared backend for either installed or source-tree launchers."""
+    from huion.ble import CONFIG_PATH
+    from .config import PipelineConfig
+    from .ble_bridge import DeviceBridge
+    folder = os.environ.get("HUION_NOTES_DIR") or (
+        load_config().get("output_dir") if Path(CONFIG_PATH).exists() else None
+    ) or str(Path.home() / "HuionNotes")
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    config = PipelineConfig(folder)
+    pipeline = SyncPipeline(config, NoteRegistry(), SvgStore(folder), JsonStore(folder),
+                            MarkdownStore(folder), CollisionResolver(folder))
+    bridge = DeviceBridge()
+    bridge.attach_pipeline(pipeline)
+    return HuionApplication(pipeline, bridge)
 
 
 @dataclass(frozen=True)
@@ -35,7 +56,7 @@ class HuionApplication:
 
     @property
     def mac_address(self) -> str:
-        return load_config().get("mac_address") or "25:6C:BB:8D:19:50"
+        return load_config().get("mac_address") or ""
 
     @property
     def output_directory(self) -> str:
@@ -43,9 +64,16 @@ class HuionApplication:
 
     @property
     def gemini_key(self) -> str:
-        return os.environ.get("GEMINI_API_KEY", "")
+        return os.environ.get("GEMINI_API_KEY") or load_config().get("gemini_key", "")
 
-    def save_settings(self, output_directory: str, gemini_key: str) -> None:
+    def save_settings(self, output_directory: str, gemini_key: str, mac_address: str | None = None, pin: str | None = None) -> None:
+        if not output_directory.strip():
+            raise ValueError("Choose a notes folder.")
+        if mac_address and not re.fullmatch(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", mac_address):
+            raise ValueError("Use a Bluetooth address such as AA:BB:CC:DD:EE:FF, or leave it empty for discovery.")
+        if pin and not re.fullmatch(r"\d{6}", pin):
+            raise ValueError("The optional notebook PIN must contain six digits.")
+        Path(os.path.expanduser(output_directory)).mkdir(parents=True, exist_ok=True)
         self.config.output_directory = os.path.expanduser(output_directory)
         self.pipeline.svg_store = SvgStore(self.config.output_directory)
         self.pipeline.json_store = JsonStore(self.config.output_directory)
@@ -53,9 +81,18 @@ class HuionApplication:
         self.pipeline.collision_resolver = CollisionResolver(self.config.output_directory)
         cfg = load_config()
         cfg["output_dir"] = self.config.output_directory
+        cfg["gemini_key"] = gemini_key
+        if mac_address is not None:
+            cfg["mac_address"] = mac_address.upper()
+        if pin is not None:
+            cfg["pin"] = pin
         save_config(cfg)
+        from huion.ble import CONFIG_PATH
+        os.chmod(CONFIG_PATH, 0o600)
         if gemini_key:
             os.environ["GEMINI_API_KEY"] = gemini_key
+        else:
+            os.environ.pop("GEMINI_API_KEY", None)
 
     def device_snapshot(self) -> DeviceSnapshot:
         thread = getattr(self.bridge, "_stream_thread", None)
@@ -74,17 +111,129 @@ class HuionApplication:
     def stop(self) -> None:
         self.bridge.stop_pen_input()
 
+    def live_draft(self) -> list[list[list[float]]]:
+        path = Path(self.output_directory) / ".live-draft.json"
+        if not path.exists():
+            return []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            strokes = data["strokes"]
+        except Exception as exc:
+            self._draft_invalid = True
+            raise ValueError("The live draft could not be read. Its contents will be preserved in a recovery copy.") from exc
+        import math
+        if not isinstance(strokes, list) or any(
+            not isinstance(s, list) or any(
+                not isinstance(p, list) or len(p) != 3 or
+                any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in p)
+                for p in s) for s in strokes
+        ):
+            self._draft_invalid = True
+            raise ValueError("The saved live draft is invalid; it has been left untouched.")
+        self._live_id = data.get("page_id")
+        if self._live_id and (not isinstance(self._live_id, str) or not re.fullmatch(r"live_[a-zA-Z0-9_]+", self._live_id)):
+            self._draft_invalid = True
+            self._live_id = None
+            raise ValueError("The saved live draft has an invalid page ID.")
+        return strokes
+
+    def save_live_draft(self, strokes: list) -> None:
+        if not getattr(self, "_live_id", None):
+            self._live_id = f"live_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        folder = Path(self.output_directory)
+        folder.mkdir(parents=True, exist_ok=True)
+        if getattr(self, "_draft_invalid", False) and (folder / ".live-draft.json").exists():
+            shutil.copyfile(folder / ".live-draft.json", folder / f".live-draft-recovery-{uuid.uuid4().hex}.json")
+            self._draft_invalid = False
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=folder, delete=False) as tmp:
+            json.dump({"page_id": self._live_id, "strokes": strokes}, tmp)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp.name, folder / ".live-draft.json")
+
+    def save_live_page(self, strokes: list) -> str:
+        from huion.ink import svg_document
+        self.save_live_draft(strokes)
+        folder = Path(self.output_directory) / "Live"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{self._live_id}.svg"
+        path.write_text(svg_document(strokes), encoding="utf-8")
+        path.with_suffix(".json").write_text(json.dumps({
+            "page_width": 28200, "page_height": 37400, "max_pressure": 8192,
+            "strokes": [{"points": [{"x": x, "y": y, "pressure": p} for x, y, p in s]} for s in strokes],
+        }), encoding="utf-8")
+        return str(path)
+
+    def new_live_page(self) -> None:
+        self._live_id = None
+        self.save_live_draft([])
+
+    def export_notes(self, notes: list[Note], destination: str, formats: list[str], progress: Any = None) -> list[str]:
+        """Export without overwriting existing files; Qt stays outside this boundary."""
+        import cairosvg
+        if not formats or any(f not in {"svg", "png", "pdf", "json", "md"} for f in formats):
+            raise ValueError("Choose at least one supported export format.")
+        root = Path(destination).expanduser()
+        root.mkdir(parents=True, exist_ok=True)
+        exported = []
+        for index, note in enumerate(notes):
+            source = Path(note.svg_path)
+            note_root = root
+            if "md" in formats and note.markdown_path:
+                count = 0
+                while True:
+                    note_root = root / (source.stem + (f"_{count}" if count else ""))
+                    try:
+                        note_root.mkdir()
+                        break
+                    except FileExistsError:
+                        count += 1
+            for fmt in formats:
+                if fmt in {"json", "md"}:
+                    candidate = note.json_path if fmt == "json" else note.markdown_path
+                    if not candidate or Path(candidate).suffix.lower() != f".{fmt}" or not Path(candidate).exists():
+                        continue
+                    content = Path(candidate).read_bytes()
+                elif fmt == "svg":
+                    content = source.read_bytes()
+                elif fmt == "png":
+                    content = cairosvg.svg2png(url=str(source), output_width=2820, output_height=3740)
+                else:
+                    content = cairosvg.svg2pdf(url=str(source), output_width=559.37, output_height=793.70)
+                path = note_root / f"{source.stem}.{fmt}"
+                count = 1
+                while True:
+                    try:
+                        with path.open("xb") as out:
+                            out.write(content)
+                        break
+                    except FileExistsError:
+                        path = note_root / f"{source.stem}_{count}.{fmt}"
+                        count += 1
+                exported.append(str(path))
+                if fmt == "md":
+                    # Markdown companions keep relative sketch links usable.
+                    for image in (source, Path(candidate).with_suffix(".svg")):
+                        target = note_root / image.name
+                        if image.exists() and not target.exists():
+                            shutil.copyfile(image, target)
+            if progress:
+                progress(index + 1, len(notes))
+        return exported
+
     def on_pen_point(self, callback: Any) -> None:
         self.bridge.on_pen_point(callback)
 
     def on_hardware_button(self, callback: Any) -> None:
         self.bridge.on_hardware_button(callback)
 
-    def sync(self) -> list[Any]:
+    def sync(self, progress=None) -> list[Any]:
         return self.bridge.sync_offline_pages(
             output_dir=self.output_directory,
             mac=self.mac_address,
             delete_after_export=False,
+            force_vectors=True,
+            progress=progress,
         )
 
     def clear_device(self) -> None:

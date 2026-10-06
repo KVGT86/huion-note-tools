@@ -148,26 +148,23 @@ def run_ocr_tesseract(svg_path: str) -> str:
         return pytesseract.image_to_string(img, config=cfg, lang="eng").strip()
     except Exception as e:
         log.warning(f"Tesseract error: {e}")
-        return ""
+        raise RuntimeError("Local OCR failed. Check that Tesseract and its English language data are installed.") from e
 
 
 # ── Gemini Vision path ────────────────────────────────────────────────────────
 
 def run_ocr_gemini(svg_path: str, api_key: Optional[str] = None) -> str:
-    """Send PNG to Gemini 1.5 Flash for HTR. Returns raw text string."""
+    """Send the selected page through Gemini's REST API; no extra SDK required."""
     key = api_key or os.environ.get("GEMINI_API_KEY", "")
     if not key:
         raise RuntimeError(
             "GEMINI_API_KEY not set.\n"
             "Export it with:  export GEMINI_API_KEY=your_key_here"
         )
-    try:
-        import google.generativeai as genai
-    except ImportError:
-        raise RuntimeError("pip install google-generativeai")
-
-    genai.configure(api_key=key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    import requests
+    model = os.environ.get("HUION_GEMINI_MODEL", "gemini-3.8-flash")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", model):
+        raise ValueError("HUION_GEMINI_MODEL must be a Gemini model ID.")
 
     b64 = base64.b64encode(rasterise_svg(svg_path)).decode()
     prompt = (
@@ -181,8 +178,24 @@ def run_ocr_gemini(svg_path: str, api_key: Optional[str] = None) -> str:
         "Mark illegible sections as [illegible]. "
         "No commentary, no preamble."
     )
-    resp = model.generate_content([{"mime_type": "image/png", "data": b64}, prompt])
-    return resp.text.strip()
+    try:
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            headers={"x-goog-api-key": key},
+            json={"contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": "image/png", "data": b64}}]}]},
+            timeout=(10, 120),
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError("Could not reach Gemini. Check your internet connection and try again.") from exc
+    if not response.ok:
+        raise RuntimeError(f"Gemini returned HTTP {response.status_code}. Check your API key, model access and quota.")
+    data = response.json()
+    candidates = data.get("candidates", [])
+    parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+    text = "\n".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+    if not text:
+        raise RuntimeError("Gemini did not return a transcript. Try local OCR or another page.")
+    return text
 
 
 # ── Markdown post-processor ───────────────────────────────────────────────────

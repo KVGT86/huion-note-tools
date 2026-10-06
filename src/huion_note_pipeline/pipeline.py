@@ -59,19 +59,19 @@ class NoteRegistry:
                 if resolved_svg in registered_paths:
                     continue
 
-                page_id = svg_f.stem
+                page_id = resolved_svg
                 if self.find_by_page_id(page_id):
                     continue
 
                 json_candidate = svg_f.with_suffix(".json")
                 if not json_candidate.exists():
-                    json_candidate = svg_f.parent / "json" / f"{page_id}.json"
+                    json_candidate = svg_f.parent / "json" / f"{svg_f.stem}.json"
                 json_path = str(json_candidate.resolve()) if json_candidate.exists() else None
 
                 # Check if converted Markdown already exists
                 md_candidate = svg_f.with_suffix(".md")
                 if not md_candidate.exists():
-                    md_candidate = svg_f.parent / "markdown" / f"{page_id}.md"
+                    md_candidate = svg_f.parent / "markdown" / f"{svg_f.stem}.md"
                 md_path = str(md_candidate.resolve()) if md_candidate.exists() else None
 
                 # Infer category from directory name
@@ -92,6 +92,7 @@ class NoteRegistry:
                     synced_at=synced_at,
                     category=cat,
                     status=NoteStatus.CONVERTED if md_path else NoteStatus.SYNCED,
+                    markdown_path=md_path,
                 )
                 self.add(note, page_id=page_id)
                 registered_paths.add(resolved_svg)

@@ -23,6 +23,20 @@ from .renderer import MultiFormatRenderer
 
 log = logging.getLogger("huion.sync")
 
+
+def next_sync_folder(output_dir: str, date: str) -> str:
+    """Reserve a new sync set without replacing an earlier import."""
+    day = os.path.join(output_dir, date)
+    os.makedirs(day, exist_ok=True)
+    index = 1
+    while True:
+        folder = os.path.join(day, f"set_{index:02d}")
+        try:
+            os.mkdir(folder)
+            return folder
+        except FileExistsError:
+            index += 1
+
 # Protocol Constants
 START = 0xCD
 END   = 0xED
@@ -157,7 +171,8 @@ class OfflineSyncManager:
         self.renderer = MultiFormatRenderer()
         self.transport = HuionBleTransport(mac=mac)
 
-    async def run_sync(self, delete_after_export: bool = False, png_only: bool = False) -> List[NotePage]:
+    async def run_sync(self, delete_after_export: bool = False, png_only: bool = False,
+                       force_vectors: bool = False, progress=None) -> List[NotePage]:
         log.info(f"Connecting to Huion Note ({self.mac}) for offline sync...")
         await self.transport.connect()
 
@@ -175,6 +190,7 @@ class OfflineSyncManager:
             pages_saved: List[NotePage] = []
             today = datetime.date.today().isoformat()
             saved_names: Set[str] = set()
+            vector_folder = None
 
             for page_idx in range(64):
                 count, raw_packets = await self._fetch_page(page_idx)
@@ -192,7 +208,7 @@ class OfflineSyncManager:
 
                 page_num = len(pages_saved) + 1
 
-                is_raw_png = png_only or "Raw PNGs" in self.output_dir or self.output_dir.rstrip("/").endswith("Raw PNGs")
+                is_raw_png = not force_vectors and (png_only or "Raw PNGs" in self.output_dir or self.output_dir.rstrip("/").endswith("Raw PNGs"))
                 if is_raw_png:
                     folder = self.output_dir
                     os.makedirs(folder, exist_ok=True)
@@ -204,7 +220,9 @@ class OfflineSyncManager:
                     saved_names.add(f"{base_name}.png")
                     artifacts = self.renderer.export_all(strokes, folder, base_name, png_only=True)
                 else:
-                    folder = os.path.join(self.output_dir, today, "set_01")
+                    if vector_folder is None:
+                        vector_folder = next_sync_folder(self.output_dir, today)
+                    folder = vector_folder
                     base_name = f"{today}_{page_num:02d}"
                     artifacts = self.renderer.export_all(strokes, folder, base_name, png_only=png_only)
 
@@ -217,6 +235,8 @@ class OfflineSyncManager:
                     artifacts=artifacts
                 )
                 pages_saved.append(page)
+                if progress:
+                    progress(len(pages_saved), 0)
                 saved_target = artifacts.png_filename if png_only else (artifacts.svg_filename or artifacts.png_filename)
                 log.info(f"Saved Page {page_num} ({len(strokes)} strokes) -> {artifacts.folder_path}/{saved_target}")
 

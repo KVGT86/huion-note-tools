@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Set, Callable, Dict, Any, TYPE_CHECKING
 
-from huion.ble import BleDeviceConnection, HuionBleTransport
+from huion.ble import BleDeviceConnection, HuionBleTransport, load_config
 from huion.sync_engine import OfflineSyncManager
 
 logger = logging.getLogger("huion_ble_bridge")
@@ -183,25 +183,31 @@ class DeviceBridge:
                 except Exception:
                     pass
 
-    def sync_offline_pages(self, output_dir: str, mac: str = "25:6C:BB:8D:19:50", delete_after_export: bool = False) -> List[Any]:
+    def sync_offline_pages(self, output_dir: str, mac: str = "25:6C:BB:8D:19:50", delete_after_export: bool = False,
+                           force_vectors: bool = False, progress=None) -> List[Any]:
         """Synchronizes offline notes over the existing active Bluetooth connection without disconnecting."""
         if self._current_loop and self._is_connected and self._current_conn and self._current_loop.is_running():
             fut = asyncio.run_coroutine_threadsafe(
-                self._async_sync_active_conn(output_dir, delete_after_export),
+                self._async_sync_active_conn(output_dir, delete_after_export, force_vectors, progress),
                 self._current_loop
             )
-            return fut.result(timeout=45.0)
+            try:
+                return fut.result(timeout=45.0)
+            except TimeoutError as exc:
+                fut.cancel()
+                raise TimeoutError("Notebook sync timed out. Already saved pages are kept; reconnect and try again.") from exc
         else:
-            sync_mgr = OfflineSyncManager(mac=mac, output_dir=output_dir)
-            return asyncio.run(sync_mgr.run_sync(delete_after_export=delete_after_export))
+            sync_mgr = OfflineSyncManager(mac=mac, output_dir=output_dir, pin=load_config().get("pin") or None)
+            return asyncio.run(sync_mgr.run_sync(delete_after_export=delete_after_export, force_vectors=force_vectors, progress=progress))
 
-    async def _async_sync_active_conn(self, output_dir: str, delete_after_export: bool = False) -> List[Any]:
+    async def _async_sync_active_conn(self, output_dir: str, delete_after_export: bool = False,
+                                      force_vectors: bool = False, progress=None) -> List[Any]:
         from huion.sync_engine import (
             START, END, OP_VERIFY_CONNECT, OP_VERIFY_RESULT, OP_REQUEST_OFFLINE_DATA,
             OP_RETURN_OFFLINE_DATA, OP_GET_PAGE_PACKAGE, OP_DELETE_PAGE, OP_CLEAR_CACHE,
-            OP_MAX_DATA, OP_SET_DISTANCE, build_frame, verify_response, decode_packet,
+            OP_MAX_DATA, OP_SET_DISTANCE, OP_VERIFY_PWD, build_frame, verify_response, decode_packet,
             points_to_strokes, NotePage, HuionDevice, ConnectionState, PageSyncStatus,
-            MultiFormatRenderer
+            MultiFormatRenderer, next_sync_folder
         )
         import datetime
 
@@ -233,6 +239,13 @@ class DeviceBridge:
                                 if res[3] == 1:
                                     authed = True
                                     break
+                                pin = load_config().get("pin")
+                                if res[3] == 2 and pin and len(pin) == 6:
+                                    encoded = [ord(pin[i]) + (104, 117, 105, 111, 110, 35)[i] for i in range(6)]
+                                    await conn.write_cmd(build_frame(OP_VERIFY_PWD, 1, *encoded[:3]))
+                                    await conn.write_cmd(build_frame(OP_VERIFY_PWD, 2, *encoded[3:]))
+                                    authed = True
+                                    break
                     if authed:
                         break
                 except asyncio.TimeoutError:
@@ -251,6 +264,7 @@ class DeviceBridge:
             pages_saved: List[NotePage] = []
             today = datetime.date.today().isoformat()
             renderer = MultiFormatRenderer()
+            vector_folder = None
 
             for page_idx in range(64):
                 await conn.write_cmd(bytes([START, OP_REQUEST_OFFLINE_DATA, 0x08, page_idx & 0xFF, (page_idx >> 8) & 0xFF, 0, 0, END]))
@@ -268,6 +282,7 @@ class DeviceBridge:
                     break
 
                 received_packets: Dict[int, bytes] = {}
+                retries = 0
                 while len(received_packets) < count:
                     try:
                         data = await _recv(timeout=3.0)
@@ -276,6 +291,9 @@ class DeviceBridge:
                             if 1 <= seq <= count:
                                 received_packets[seq] = data
                     except asyncio.TimeoutError:
+                        retries += 1
+                        if retries > 5:
+                            raise TimeoutError("The notebook stopped sending this page. Previously saved pages are kept.")
                         missing = [s for s in range(1, count + 1) if s not in received_packets]
                         if not missing:
                             break
@@ -291,7 +309,7 @@ class DeviceBridge:
                 strokes = points_to_strokes(all_points)
                 page_num = len(pages_saved) + 1
 
-                is_raw_png = "Raw PNGs" in output_dir or output_dir.rstrip("/").endswith("Raw PNGs")
+                is_raw_png = not force_vectors and ("Raw PNGs" in output_dir or output_dir.rstrip("/").endswith("Raw PNGs"))
                 if is_raw_png:
                     folder = output_dir
                     os.makedirs(folder, exist_ok=True)
@@ -305,7 +323,9 @@ class DeviceBridge:
                     self._saved_sync_names.add(f"{base_name}.png")
                     artifacts = renderer.export_all(strokes, folder, base_name, png_only=True)
                 else:
-                    folder = os.path.join(output_dir, today, "set_01")
+                    if vector_folder is None:
+                        vector_folder = next_sync_folder(output_dir, today)
+                    folder = vector_folder
                     base_name = f"{today}_{page_num:02d}"
                     artifacts = renderer.export_all(strokes, folder, base_name)
 
@@ -318,6 +338,8 @@ class DeviceBridge:
                     artifacts=artifacts
                 )
                 pages_saved.append(page)
+                if progress:
+                    progress(len(pages_saved), 0)
 
                 if delete_after_export:
                     await conn.write_cmd(bytes([START, OP_DELETE_PAGE, 0x08, page_idx & 0xFF, (page_idx >> 8) & 0xFF, 0, 0, END]))
@@ -338,7 +360,7 @@ class DeviceBridge:
 
     def stream_pen_input(self, device: Any, mode: str = "tablet") -> None:
         addr = getattr(device, "address", str(device))
-        if not addr or addr == "HUION-NOTE-X10":
+        if addr == "HUION-NOTE-X10":
             return
 
         if self._stream_thread and self._stream_thread.is_alive():
@@ -456,11 +478,7 @@ class DeviceBridge:
 
     def clear_all_pages(self, device: X10Device) -> None:
         out_dir = getattr(self._pipeline.config, "output_directory", "./notes_output") if self._pipeline else "./notes_output"
-        sync_mgr = OfflineSyncManager(mac=device.address, output_dir=out_dir)
-        try:
-            asyncio.run(sync_mgr.run_sync(delete_after_export=True))
-        except Exception:
-            pass
+        self.sync_offline_pages(out_dir, device.address, delete_after_export=True)
         device.stored_pages.clear()
         device.page_count = 0
 
