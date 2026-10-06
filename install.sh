@@ -41,7 +41,7 @@ echo "[✓] Notes directory ready at $NOTES_DIR"
 
 # 4. Install Application Icon
 ICON_SRC="$SCRIPT_DIR/assets/huionnote.png"
-ICON_DEST_DIR="$HOME/.local/share/icons/hicolor/512x512/apps"
+ICON_DEST_DIR="$HOME/.local/share/icons/hicolor/1024x1024/apps"
 mkdir -p "$ICON_DEST_DIR"
 mkdir -p "$HOME/.local/share/pixmaps"
 
@@ -66,7 +66,7 @@ Type=Application
 Name=HuionNote
 GenericName=Digital Notebook Companion
 Comment=Huion Note X10 Companion & Digital Notebook
-Exec=env QT_QPA_PLATFORM=xcb $VENV_DIR/bin/python3 $SCRIPT_DIR/start_app.py
+Exec="$VENV_DIR/bin/python3" "$SCRIPT_DIR/start_app.py"
 Icon=$ICON_DEST_DIR/huionnote.png
 Terminal=false
 Categories=Utility;Graphics;Office;

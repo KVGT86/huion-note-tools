@@ -8,14 +8,26 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 
 ## Features
 
-* **Real-Time Live Canvas**: Stream pen strokes directly from the Huion Note X10 over BLE with pressure sensitivity and A5 paper aspect ratio rendering.
-* **Offline Deep Learning Handwriting Transcription (HTR)**: Uses local neural networks (`EasyOCR` + `Microsoft TrOCR`) to transcribe cursive and print notes directly into structured Markdown without an internet connection.
-* **Cloud AI Transcription**: Optional one-click **"AI Convert (Gemini)"** button for multimodal handwriting recognition.
-* **In-App Annotation & Editor**: Annotate existing synced notes or draw new vector strokes directly onto pages.
-* **Markdown Reader**: Preview transcribed Markdown directly inside the app with Obsidian-compatible YAML frontmatter and one-click "Open in Default Editor".
-* **Persistent Document Library**: Scans and indexes all existing notes across `~/HuionNotes` and offline storage locations.
-* **System Tray Indicator**: Minimalist system tray pen icon with live connection dot (blue = connected, yellow = connecting, red = disconnected) and battery percentage.
-* **PySide6 Desktop Interface**: A quiet, Notion-inspired workspace with native Qt controls, live connection state, and an optional activity log.
+* **Notes-first workspace**: Search titles and transcripts, filter page states, and select multiple pages for export or transcription.
+* **In-app reading and review**: Crisp vector handwriting preview, Markdown reading, and side-by-side transcript editing.
+* **Batch export**: SVG, PDF, high-resolution PNG, original JSON pen samples, and Markdown with companion sketches. Existing files are preserved.
+* **Live notebook sharing**: Smooth pressure-sensitive vector ink, zoom, pan, paper guides, saved pages and recoverable local drafts. F11 presents only the notebook; Escape restores controls.
+* **Local transcription**: Tesseract OCR is the lightweight default fallback. Optional EasyOCR/TrOCR models are used when installed.
+* **Cloud transcription**: Explicitly selected Gemini transcription using a key configured in Settings. Only selected pages are sent. The REST integration needs no additional SDK.
+* **Device controls**: Connection and battery state, reconnect, persistent folder/address/PIN settings, and confirmed device clearing.
+* **Notion-inspired PySide6 interface**: Paper, graphite, native typography, quiet contextual actions, and an optional activity log. Native Wayland is preferred on supported desktops.
+
+The Tkinter annotation editor and tray implementation remain in the repository as legacy tools; they are not features of the default Qt workspace.
+
+## Desktop 1.1.0
+
+Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Review & edit. Ctrl/Shift-click selects multiple pages. Export and Transcribe operate on that selection.
+
+Open **Live notebook** when sharing your writing. Save page adds the current page to Notes; New page saves it before starting a fresh page. The X10 page button uses the same save-and-advance action. Previous/Next browse this session; earlier saved sessions remain in Notes. A draft is saved every three seconds and restored on restart. Disconnects leave the page visible.
+
+Shortcuts: Ctrl+F search, Ctrl+S save the current page/transcript, Ctrl+E export, Ctrl+N new live page, F11 present, Escape leave presentation. Ctrl+wheel zooms; dragging pans the page.
+
+Versions follow Semantic Versioning, commits use Conventional Commits, and releases are recorded in [CHANGELOG.md](CHANGELOG.md). See [DESIGN.md](DESIGN.md) for the maintained style guide.
 
 ---
 
@@ -65,12 +77,20 @@ huion-notes/
    ./install.sh
    ```
 
-   On Wayland desktops, Qt also requires the system XWayland cursor runtime:
+   Native Wayland is preferred when available. The X11 fallback needs its cursor runtime on Ubuntu/Debian:
 
    ```bash
    sudo apt install libxcb-cursor0
    ```
-   This will:
+   For local OCR, install Tesseract and its English language data:
+
+   ```bash
+   sudo apt install tesseract-ocr tesseract-ocr-eng
+   ```
+
+   A platform override remains available for troubleshooting: run with `QT_QPA_PLATFORM=xcb`. Gemini defaults to `gemini-3.8-flash`; set `HUION_GEMINI_MODEL` to another supported model ID if needed. API format: [Google Gemini generateContent](https://ai.google.dev/api/generate-content).
+   The installer will:
+
    * Create and configure the `.venv` virtual environment.
    * Install all required dependencies.
    * Install the desktop launcher and icon into `~/.local/share/applications/` and `~/.local/share/icons/`.
@@ -83,10 +103,10 @@ huion-notes/
      ./start_app.py
      ```
 
-Optional handwriting-recognition dependencies can be installed later with:
+Optional local neural handwriting-recognition dependencies can be installed later with:
 
 ```bash
-.venv/bin/pip install -e '.[ml,ai]'
+.venv/bin/pip install -e '.[ml]'
 ```
 
 ## Command Line
