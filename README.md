@@ -77,6 +77,12 @@ huion-notes/
      ./start_app.py
      ```
 
+Optional handwriting-recognition dependencies can be installed later with:
+
+```bash
+.venv/bin/pip install -e '.[ml,ai]'
+```
+
 ## Command Line
 
 The GUI and CLI use the same `huion` BLE and sync package. After installation:

@@ -32,9 +32,6 @@ echo "[*] Upgrading pip and build tools..."
 "$VENV_DIR/bin/pip" install --upgrade pip setuptools wheel --quiet
 
 echo "[*] Installing dependencies..."
-if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
-    "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" --quiet
-fi
 "$VENV_DIR/bin/pip" install -e . --quiet
 
 # 3. Create Default Notes Storage Directory (~/HuionNotes)
