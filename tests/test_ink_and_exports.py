@@ -60,6 +60,39 @@ def test_existing_transcript_loads_on_restart(pipeline, tmp_output):
     assert note.markdown_path == str(svg.with_suffix(".md"))
 
 
+def test_coloured_ink_survives_recovery_and_all_exports(pipeline, tmp_output):
+    service = HuionApplication(pipeline, MagicMock())
+    strokes = [[(1000, 1000, 3000)], [(2000, 2000, 5000)]]
+    colors = ["#2457A7", "#912D47"]
+    service.save_live_draft(strokes)
+    draft_path = tmp_output / ".live-draft.json"
+    legacy = json.loads(draft_path.read_text())
+    legacy.pop("colors")
+    legacy.pop("ink_color")
+    draft_path.write_text(json.dumps(legacy))
+    assert service.live_draft() == [[list(p) for p in s] for s in strokes]
+    assert service.live_colors == ["#25231F"] * 2
+    path = Path(service.save_live_page(strokes, colors, "#28704B"))
+    recovered = HuionApplication(pipeline, MagicMock())
+    assert recovered.live_draft() == [[list(p) for p in s] for s in strokes]
+    assert recovered.live_colors == colors and recovered.ink_color == "#28704B"
+    assert recovered.save_live_page(strokes) == str(path)
+    for color in colors:
+        assert f'fill="{color}"' in path.read_text()
+    assert [s["color"] for s in json.loads(path.with_suffix(".json").read_text())["strokes"]] == colors
+    note = next(n for n in recovered.load_notes() if n.svg_path == str(path))
+    exported = recovered.export_notes([note], str(tmp_output / "exports"), ["svg", "json", "png", "pdf"])
+    assert len(exported) == 4
+    assert 'fill="#2457A7"' in Path(exported[0]).read_text()
+    assert json.loads(Path(exported[1]).read_text())["strokes"][1]["color"] == colors[1]
+    recovered.new_live_page()
+    assert recovered.live_draft() == [] and recovered.ink_color == "#28704B"
+    with pytest.raises(ValueError):
+        svg_document(strokes, ['#123456"/><script/>', colors[1]])
+    with pytest.raises(ValueError):
+        svg_document(strokes, [colors[0]])
+
+
 def test_repeated_sync_names_do_not_replace_or_hide_pages(pipeline, tmp_output):
     from huion.sync_engine import next_sync_folder
     first = Path(next_sync_folder(str(tmp_output), "2026-10-06")) / "page.svg"

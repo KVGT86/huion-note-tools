@@ -12,17 +12,17 @@ if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY"):
     os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, QUrl, QSize
-from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QIcon, QShortcut, QKeySequence, QDesktopServices, QPalette, QFont
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QIcon, QShortcut, QKeySequence, QDesktopServices, QPalette, QFont, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QStackedWidget, QSplitter, QListWidget, QListWidgetItem,
     QAbstractItemView, QLineEdit, QComboBox, QTextEdit, QTextBrowser, QTabWidget,
     QDialog, QDialogButtonBox, QFormLayout, QFileDialog, QMessageBox, QCheckBox,
-    QProgressBar, QMenu, QSizePolicy, QStyledItemDelegate, QRadioButton, QListView, QToolButton, QStatusBar,
+    QProgressBar, QMenu, QSizePolicy, QStyledItemDelegate, QRadioButton, QListView, QToolButton, QStatusBar, QColorDialog,
 )
 
-from huion.ink import PAGE_WIDTH, PAGE_HEIGHT, outline, svg_document
+from huion.ink import PAGE_WIDTH, PAGE_HEIGHT, outline, svg_document, stroke_colors, validate_color
 from huion.ble import load_config
 from huion_note_pipeline import __version__
 from huion_note_pipeline.application import HuionApplication
@@ -45,6 +45,8 @@ QToolButton:hover { background: #E4E1DA; }
 QToolButton:pressed, QToolButton:checked { background: #E4DEF0; border-color: #B8B3AA; }
 QToolButton:focus { border-color: #786995; }
 QToolButton#utility { text-align: left; padding: 9px 10px; }
+QToolButton#inkChoice { padding-right: 18px; }
+QToolButton#inkChoice::menu-indicator { image: url(__CHEVRON__); width: 12px; height: 12px; subcontrol-position: right center; right: 3px; }
 QFrame#toolDivider { background: #D6D3CC; max-width: 1px; }
 QComboBox#paperChoice { min-width: 64px; }
 QLabel#title { font-size: 21px; font-weight: 600; }
@@ -136,7 +138,7 @@ ICON_NAMES = {
     "fit-page": "maximize", "fit-width": "move-horizontal",
     "minus": "minus", "plus": "plus", "previous": "chevron-left",
     "next": "chevron-right", "reconnect": "refresh-cw", "activity": "list",
-    "settings": "settings", "bluetooth": "bluetooth", "delete": "trash",
+    "settings": "settings", "bluetooth": "bluetooth", "delete": "trash", "color": "palette",
 }
 
 
@@ -296,6 +298,9 @@ class LiveCanvas(PaperView):
         self._strokes = []
         self._active = []
         self._geometry = []
+        self._colors = []
+        self.ink_color = INK
+        self._active_color = INK
         self._dirty = False
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._paint_pending)
@@ -309,8 +314,17 @@ class LiveCanvas(PaperView):
     def samples(self) -> list:
         return [list(s) for s in self._strokes] + ([list(self._active)] if self._active else [])
 
-    def set_samples(self, strokes: list) -> None:
+    def colors(self) -> list[str]:
+        return list(self._colors) + ([self._active_color] if self._active else [])
+
+    def set_ink_color(self, color: str) -> None:
+        self.ink_color = validate_color(color)
+        self.changed.emit()
+
+    def set_samples(self, strokes: list, colors: list[str] | None = None) -> None:
+        colors = stroke_colors(len(strokes), colors)
         self._strokes = [[tuple(p) for p in s] for s in strokes if s]
+        self._colors = [c for s, c in zip(strokes, colors) if s]
         self._active = []
         self._geometry = [QPolygonF([QPointF(x, y) for x, y in outline(s)]) for s in self._strokes]
         self.update()
@@ -318,9 +332,12 @@ class LiveCanvas(PaperView):
     def add_point(self, point: Any) -> None:
         touching = getattr(point, "touch", getattr(point, "pressure", 0) > 0)
         if touching and getattr(point, "pressure", 0) > 0:
+            if not self._active:
+                self._active_color = self.ink_color
             self._active.append((float(point.x), float(point.y), int(point.pressure)))
         elif self._active:
             self._strokes.append(self._active)
+            self._colors.append(self._active_color)
             self._geometry.append(QPolygonF([QPointF(x, y) for x, y in outline(self._active)]))
             self._active = []
         else:
@@ -333,7 +350,7 @@ class LiveCanvas(PaperView):
         self.changed.emit()
 
     def to_svg(self) -> str:
-        return svg_document(self.samples())
+        return svg_document(self.samples(), self.colors())
 
     def paint_ink(self, painter: QPainter, page: QRectF) -> None:
         painter.save()
@@ -349,12 +366,13 @@ class LiveCanvas(PaperView):
                     for x in range(step, PAGE_WIDTH, step):
                         painter.drawPoint(QPointF(x, y))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(INK))
-        for polygon in self._geometry:
-            painter.drawPolygon(polygon)
+        for polygon, color in zip(self._geometry, self._colors):
+            painter.setBrush(QColor(color))
+            painter.drawPolygon(polygon, Qt.FillRule.WindingFill)
         # ponytail: rebuild only the unfinished stroke; incremental geometry if one stroke grows very long.
         if self._active:
-            painter.drawPolygon(QPolygonF([QPointF(x, y) for x, y in outline(self._active)]))
+            painter.setBrush(QColor(self._active_color))
+            painter.drawPolygon(QPolygonF([QPointF(x, y) for x, y in outline(self._active)]), Qt.FillRule.WindingFill)
         painter.restore()
 
 
@@ -465,9 +483,11 @@ class HuionNoteWindow(QMainWindow):
         self._draft_dirty = False
         self._presentation = False
         self._live_history = []
+        self._live_color_history = []
         self._live_paths = []
         self._history_index = 0
         self._current_live = []
+        self._current_colors = []
         self._selected_note = None
         self._editor_dirty = False
         self.setWindowTitle("HuionNote")
@@ -493,7 +513,11 @@ class HuionNoteWindow(QMainWindow):
         self.draft_timer.start(3000)
         self.canvas.changed.connect(self.live_changed)
         try:
-            self.canvas.set_samples(self.service.live_draft())
+            strokes = self.service.live_draft()
+            self.canvas.set_samples(strokes, self.service.live_colors)
+            self.canvas.set_ink_color(self.service.ink_color)
+            self._draft_dirty = False
+            self.update_ink_menu()
         except Exception as exc:
             self.log(str(exc))
         self.service.start_stream()
@@ -726,6 +750,23 @@ class HuionNoteWindow(QMainWindow):
         self.paper_choice.setToolTip("Paper guides are for viewing only; exported pages stay plain.")
         self.paper_choice.currentTextChanged.connect(self.change_paper)
         tools.addWidget(self.paper_choice)
+        self.ink_button = tool_button("color", "Ink colour", lambda: None)
+        self.ink_button.setObjectName("inkChoice")
+        self.ink_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.ink_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.ink_menu = QMenu(self)
+        self.ink_actions = {}
+        for name, color in (("Graphite", INK), ("Blue", "#2457A7"), ("Burgundy", "#912D47"), ("Green", "#28704B")):
+            swatch = QPixmap(16, 16)
+            swatch.fill(QColor(color))
+            action = self.ink_menu.addAction(QIcon(swatch), name)
+            action.setCheckable(True)
+            action.triggered.connect(lambda checked=False, color=color: self.change_ink(color))
+            self.ink_actions[color] = action
+        self.ink_menu.addSeparator()
+        self.ink_menu.addAction("Custom colour…", self.choose_ink)
+        self.ink_button.setMenu(self.ink_menu)
+        tools.addWidget(self.ink_button)
         tools.addStretch()
         tools.addWidget(tool_button("save", "Save page to Notes (Ctrl+S)", self.save_live))
         tools.addWidget(tool_button("new", "Save and start a new page (Ctrl+N)", self.new_page))
@@ -737,6 +778,27 @@ class HuionNoteWindow(QMainWindow):
         layout.addWidget(self.canvas, 1)
         self.canvas.setToolTip("Ctrl+scroll to zoom. Drag to pan.")
         return page
+
+    def update_ink_menu(self) -> None:
+        color = self.canvas.ink_color
+        name = color
+        for value, action in self.ink_actions.items():
+            action.setChecked(value == color)
+            if value == color:
+                name = action.text()
+        self.ink_button.setToolTip(f"Ink colour · {name}. Applies to new strokes; existing ink is kept.")
+        self.ink_button.setAccessibleName(f"Ink colour: {name}")
+        self.ink_button.setText(name)
+
+    def change_ink(self, color: str) -> None:
+        self.canvas.set_ink_color(color)
+        self.update_ink_menu()
+
+    def choose_ink(self) -> None:
+        color = QColorDialog.getColor(QColor(self.canvas.ink_color), self, "Ink colour",
+                                      QColorDialog.ColorDialogOption.DontUseNativeDialog)
+        if color.isValid():
+            self.change_ink(color.name())
 
     def change_paper(self, style: str) -> None:
         self.canvas.paper_style = style
@@ -972,10 +1034,11 @@ class HuionNoteWindow(QMainWindow):
         old_index = self._history_index
         was_browsing = old_index < len(self._live_history)
         self._live_history = [self._live_history[i] for i in kept]
+        self._live_color_history = [self._live_color_history[i] for i in kept]
         self._live_paths = [self._live_paths[i] for i in kept]
         self._history_index = kept.index(old_index) if old_index in kept else len(kept)
         if was_browsing and old_index not in kept:
-            self.canvas.set_samples(self._current_live)
+            self.canvas.set_samples(self._current_live, self._current_colors)
         self.live_position.setText("Current page" if self._history_index == len(kept) else f"Saved page {self._history_index + 1}")
         self.update_live_controls()
 
@@ -1146,7 +1209,7 @@ class HuionNoteWindow(QMainWindow):
     def receive_point(self, point: Any) -> None:
         if self._history_index < len(self._live_history):
             self._history_index = len(self._live_history)
-            self.canvas.set_samples(self._current_live)
+            self.canvas.set_samples(self._current_live, self._current_colors)
             self.live_position.setText("Current page")
             self.update_live_controls()
         self.canvas.add_point(point)
@@ -1172,7 +1235,7 @@ class HuionNoteWindow(QMainWindow):
         if not self._draft_dirty:
             return True
         try:
-            self.service.save_live_draft(self.canvas.samples())
+            self.service.save_live_draft(self.canvas.samples(), self.canvas.colors(), self.canvas.ink_color)
             self._draft_dirty = False
             self.update_live_controls()
             return True
@@ -1189,7 +1252,7 @@ class HuionNoteWindow(QMainWindow):
             self.log("Write on the notebook before saving a page.")
             return False
         try:
-            self._last_live_path = self.service.save_live_page(self.canvas.samples())
+            self._last_live_path = self.service.save_live_page(self.canvas.samples(), self.canvas.colors(), self.canvas.ink_color)
             self._draft_dirty = False
             self.update_live_controls()
             self.log("Live page saved to Notes.")
@@ -1206,6 +1269,7 @@ class HuionNoteWindow(QMainWindow):
             if not self.save_live():
                 return
             self._live_history.append(self.canvas.samples())
+            self._live_color_history.append(self.canvas.colors())
             self._live_paths.append(self._last_live_path)
         try:
             self.service.new_live_page()
@@ -1215,6 +1279,7 @@ class HuionNoteWindow(QMainWindow):
         self.canvas.set_samples([])
         self._history_index = len(self._live_history)
         self._current_live = []
+        self._current_colors = []
         self._draft_dirty = False
         self.live_position.setText("Current page")
         self.update_live_controls()
@@ -1228,8 +1293,10 @@ class HuionNoteWindow(QMainWindow):
             if not self.save_draft():
                 return
             self._current_live = self.canvas.samples()
+            self._current_colors = self.canvas.colors()
         self._history_index = target
-        self.canvas.set_samples(self._current_live if target == len(self._live_history) else self._live_history[target])
+        self.canvas.set_samples(self._current_live if target == len(self._live_history) else self._live_history[target],
+                                self._current_colors if target == len(self._live_history) else self._live_color_history[target])
         self.live_position.setText("Current page" if target == len(self._live_history) else f"Saved page {target + 1}")
         self.update_live_controls()
         self.canvas.reset_view()
@@ -1305,7 +1372,7 @@ class HuionNoteWindow(QMainWindow):
             event.ignore()
             return
         if self._history_index < len(self._live_history):
-            self.canvas.set_samples(self._current_live)
+            self.canvas.set_samples(self._current_live, self._current_colors)
             self._history_index = len(self._live_history)
         self._draft_dirty = True
         if not self.save_draft():

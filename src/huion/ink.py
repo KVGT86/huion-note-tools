@@ -1,11 +1,29 @@
 """Device-space ink geometry shared by drawing and exports; no UI dependencies."""
 from __future__ import annotations
 import math
+import re
 from typing import Iterable
 
 PAGE_WIDTH, PAGE_HEIGHT = 28200, 37400
 INK = "#25231F"
 Sample = tuple[float, float, float]
+
+
+def validate_color(color: str) -> str:
+    """Only opaque hex colours can enter SVG or saved ink metadata."""
+    if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+        raise ValueError("Ink colour must be an opaque six-digit hex colour.")
+    return color.upper()
+
+
+def stroke_colors(count: int, colors: Iterable[str] | None = None) -> list[str]:
+    try:
+        result = [INK] * count if colors is None else [validate_color(c) for c in colors]
+    except TypeError as exc:
+        raise ValueError("Ink colours must be a list of opaque hex colours.") from exc
+    if len(result) != count:
+        raise ValueError("Each stroke must have one ink colour.")
+    return result
 
 
 def radius(pressure: float) -> float:
@@ -56,13 +74,15 @@ def outline(samples: Iterable[Sample]) -> list[tuple[float, float]]:
     return left + end_cap + list(reversed(right)) + start_cap
 
 
-def svg_document(strokes: Iterable[Iterable[Sample]]) -> str:
+def svg_document(strokes: Iterable[Iterable[Sample]], colors: Iterable[str] | None = None) -> str:
+    strokes = list(strokes)
+    colors = stroke_colors(len(strokes), colors)
     lines = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{PAGE_WIDTH}" height="{PAGE_HEIGHT}" viewBox="0 0 {PAGE_WIDTH} {PAGE_HEIGHT}">',
              f'<rect width="{PAGE_WIDTH}" height="{PAGE_HEIGHT}" fill="white"/>']
-    for stroke in strokes:
+    for stroke, color in zip(strokes, colors):
         polygon = outline(stroke)
         if polygon:
             coords = " L ".join(f"{x:.3f},{y:.3f}" for x, y in polygon)
-            lines.append(f'<path d="M {coords} Z" fill="{INK}"/>')
+            lines.append(f'<path d="M {coords} Z" fill="{color}" fill-rule="nonzero"/>')
     lines.append("</svg>")
     return "\n".join(lines)

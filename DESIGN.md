@@ -107,6 +107,8 @@ The bottom action row has 16px clearance above the footer. Export and Transcribe
 ### Live notebook
 One toolbar groups page navigation and paper guides on the left, save/new-page icons and Present on the right. Plain, ruled or dotted paper; fit page, fit width, zoom and pan. Pressure changes locally along smooth stroke outlines. Completed geometry is cached. Single-point marks remain visible.
 
+A downloaded Lucide palette icon and visible colour name open a compact menu beside paper guides. Named Graphite, Blue, Burgundy and Green choices have native colour swatches; Custom colour opens Qt's picker. Colour is document content, not a new interface accent. It applies to future strokes only, persists with each stroke and never erases crossing ink. Live polygons use winding fill to match exported SVG nonzero fill.
+
 ### Status footer
 A full-width, hairline-separated Qt status bar anchors the shell. Minimum height is 56px, with 16px horizontal and 10px vertical outer layout margins. Status groups have additional 12–16px separation. Bluetooth state and reconnect sit on the left; operation results occupy the flexible middle. Live draft state, fit and zoom controls sit on the right. Persistent instructions move into tooltips; draft state reports only what has actually happened. Saved-page browsing is distinguished from the active draft.
 

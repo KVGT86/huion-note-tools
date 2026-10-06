@@ -2,6 +2,17 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.3.0] — 2026-10-06
+
+### Added
+- Compact live ink-colour menu with Graphite, Blue, Burgundy, Green and a custom Qt colour picker.
+- Per-stroke colours survive draft recovery, saved-page browsing and SVG/PNG/PDF/JSON exports without changing raw pen samples.
+- Downloaded Lucide palette icon, named colour choices and a visible current-colour label.
+
+### Fixed
+- Crossing and retracing a stroke no longer produces white gaps: active and cached ink use winding fill, matching SVG's explicit nonzero fill rule.
+- Changing ink applies to new strokes without recolouring existing ink or a stroke already in progress.
+
 ## [1.2.0] — 2026-10-06
 
 ### Added

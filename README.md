@@ -19,7 +19,7 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 
 The Tkinter annotation editor and tray implementation remain in the repository as legacy tools; they are not features of the default Qt workspace.
 
-## Desktop 1.2.0
+## Desktop 1.3.0
 
 Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Edit transcript. Ctrl/Shift-click selects multiple pages. Export and Transcribe operate on that selection.
 
@@ -34,6 +34,8 @@ The live toolbar groups page navigation, paper guides and icon-led save/new-page
 UI icons are downloaded from [Lucide](https://lucide.dev/icons/), bundled locally with their license and pinned source revision. No icon service or extra runtime dependency is required.
 
 Open **Live notebook** when sharing your writing. Save page adds the current page to Notes; New page saves it before starting a fresh page. The X10 page button uses the same save-and-advance action. Previous/Next browse this session; earlier saved sessions remain in Notes. A draft is saved every three seconds and restored on restart. Disconnects leave the page visible.
+
+The palette control selects ink for new strokes: Graphite, Blue, Burgundy, Green or a custom opaque colour. Existing handwriting keeps its original colour, including a stroke already in progress. Colours are retained in drafts, saved pages and exports; raw coordinates and pressure samples are unchanged. Older monochrome drafts open as Graphite. Paper guides remain view-only.
 
 Shortcuts: Ctrl+F search, Ctrl+S save the current page/transcript, Ctrl+E export, Ctrl+N new live page, F11 present, Escape leave presentation. Ctrl+wheel zooms; dragging pans the page.
 

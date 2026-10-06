@@ -38,7 +38,7 @@
     {
       "name": "Notebook toolbar",
       "kind": "custom",
-      "description": "Single-row navigation and paper controls on the left; icon-led save, new-page and presentation actions on the right.",
+      "description": "Single-row navigation, paper controls and a Lucide palette menu with visible ink-colour name on the left; icon-led save, new-page and presentation actions on the right.",
       "html": "<button class=\"ds-tool\" aria-label=\"Fit entire page\" title=\"Fit entire page\"><img src=\"src/huion_note_pipeline/gui/icons/lucide/maximize.svg\" width=\"18\" height=\"18\" alt=\"\"></button>",
       "css": ".ds-tool{min-width:32px;min-height:32px;padding:6px;background:transparent;color:#25231F;border:1px solid transparent;border-radius:5px}.ds-tool:hover{background:#E4E1DA}.ds-tool:focus-visible{outline:1px solid #786995}.ds-tool:active{background:#E4DEF0}"
     },

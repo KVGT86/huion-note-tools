@@ -120,7 +120,7 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     window.canvas.add_point(SimpleNamespace(x=5000, y=6000, pressure=0, touch=False))
     first = window.canvas.samples()
     assert window.live_hint.text() == "Unsaved changes"
-    def fail_draft(strokes):
+    def fail_draft(*args):
         raise OSError("Notes folder is unavailable")
     with monkeypatch.context() as patch:
         patch.setattr(window.service, "save_live_draft", fail_draft)
@@ -134,6 +134,8 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     assert window.live_hint.text() == "Blank page"
     window.canvas.add_point(SimpleNamespace(x=10000, y=5000, pressure=2000, touch=True))
     current = window.canvas.samples()
+    window.change_ink("#2457A7")
+    assert window.ink_button.text() == "Blue"
     window.browse_live(-1)
     assert window.canvas.samples() == first
     assert window.next_page_button.isEnabled()
@@ -141,6 +143,13 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     window.save_live()
     window.browse_live(1)
     assert window.canvas.samples() == current
+    from PySide6.QtGui import QColor
+    monkeypatch.setattr("huion_note_pipeline.gui.qt_app.QColorDialog.getColor", lambda *a: QColor())
+    window.choose_ink()
+    assert window.canvas.ink_color == "#2457A7"
+    monkeypatch.setattr("huion_note_pipeline.gui.qt_app.QColorDialog.getColor", lambda *a: QColor("#765432"))
+    window.choose_ink()
+    assert window.ink_button.text() == "#765432"
     window.resize(860, 580)
     window.show()
     app.processEvents()
@@ -186,3 +195,38 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     app.processEvents()
     import json
     assert json.loads((tmp_path / ".live-draft.json").read_text())["strokes"] == [[list(p) for p in s] for s in current]
+
+
+def test_live_overlap_is_solid_for_active_and_completed_strokes():
+    import math
+    from types import SimpleNamespace
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QImage, QPainter
+    from huion_note_pipeline.gui.qt_app import LiveCanvas
+    app = QApplication.instance() or QApplication([])
+    canvas = LiveCanvas()
+    twice = [(14000 + 4000 * math.cos(i * math.tau / 160),
+              14000 + 4000 * math.sin(i * math.tau / 160), 8192) for i in range(321)]
+    def pixel():
+        image = QImage(2820, 3740, QImage.Format.Format_RGB32)
+        image.fill("white")
+        painter = QPainter(image)
+        canvas.paint_ink(painter, QRectF(0, 0, 2820, 3740))
+        painter.end()
+        return image.pixelColor(1400, 1800).name()
+    canvas.set_samples([twice])
+    assert pixel() == "#25231f"  # Odd-even fill left this retraced area white.
+    canvas.clear_page()
+    canvas.set_ink_color("#2457A7")
+    for x, y, pressure in twice:
+        canvas.add_point(SimpleNamespace(x=x, y=y, pressure=pressure, touch=True))
+    canvas.set_ink_color("#912D47")  # Never recolour a stroke already in progress.
+    assert pixel() == "#2457a7" and canvas.colors() == ["#2457A7"]
+    canvas.add_point(SimpleNamespace(pressure=0, touch=False))
+    assert pixel() == "#2457a7"
+    canvas.add_point(SimpleNamespace(x=14000, y=18000, pressure=8192, touch=True))
+    assert pixel() == "#912d47"  # New ink covers existing ink rather than cutting a hole.
+    canvas.add_point(SimpleNamespace(pressure=0, touch=False))
+    assert canvas.colors() == ["#2457A7", "#912D47"]
+    assert 'fill="#2457A7"' in canvas.to_svg() and 'fill="#912D47"' in canvas.to_svg()
+    canvas.close()

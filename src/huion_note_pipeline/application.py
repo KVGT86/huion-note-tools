@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from huion.ble import load_config, save_config
+from huion.ink import INK, stroke_colors, validate_color
 
 from . import htr
 from .enums import NoteCategory, NoteStatus
@@ -58,6 +59,8 @@ class HuionApplication:
         self.registry: NoteRegistry = pipeline.registry
         self.config = pipeline.config
         self._storage = load_config().get("storage_estimate", {})
+        self.live_colors: list[str] = []
+        self.ink_color = INK
 
     @property
     def mac_address(self) -> str:
@@ -182,9 +185,18 @@ class HuionApplication:
             self._draft_invalid = True
             self._live_id = None
             raise ValueError("The saved live draft has an invalid page ID.")
+        try:
+            self.live_colors = stroke_colors(len(strokes), data.get("colors"))
+            self.ink_color = validate_color(data.get("ink_color", INK))
+        except ValueError:
+            self._draft_invalid = True
+            raise ValueError("The saved ink colours are invalid; the draft has been left untouched.")
         return strokes
 
-    def save_live_draft(self, strokes: list) -> None:
+    def save_live_draft(self, strokes: list, colors: list[str] | None = None, ink_color: str | None = None) -> None:
+        colors = stroke_colors(len(strokes), colors if colors is not None else
+                               self.live_colors if len(self.live_colors) == len(strokes) else None)
+        ink_color = validate_color(self.ink_color if ink_color is None else ink_color)
         if not getattr(self, "_live_id", None):
             self._live_id = f"live_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
         folder = Path(self.output_directory)
@@ -193,21 +205,24 @@ class HuionApplication:
             shutil.copyfile(folder / ".live-draft.json", folder / f".live-draft-recovery-{uuid.uuid4().hex}.json")
             self._draft_invalid = False
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=folder, delete=False) as tmp:
-            json.dump({"page_id": self._live_id, "strokes": strokes}, tmp)
+            json.dump({"page_id": self._live_id, "strokes": strokes,
+                       "colors": colors, "ink_color": ink_color}, tmp)
             tmp.flush()
             os.fsync(tmp.fileno())
         os.replace(tmp.name, folder / ".live-draft.json")
+        self.live_colors, self.ink_color = colors, ink_color
 
-    def save_live_page(self, strokes: list) -> str:
+    def save_live_page(self, strokes: list, colors: list[str] | None = None, ink_color: str | None = None) -> str:
         from huion.ink import svg_document
-        self.save_live_draft(strokes)
+        self.save_live_draft(strokes, colors, ink_color)
         folder = Path(self.output_directory) / "Live"
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{self._live_id}.svg"
-        path.write_text(svg_document(strokes), encoding="utf-8")
+        path.write_text(svg_document(strokes, self.live_colors), encoding="utf-8")
         path.with_suffix(".json").write_text(json.dumps({
             "page_width": 28200, "page_height": 37400, "max_pressure": 8192,
-            "strokes": [{"points": [{"x": x, "y": y, "pressure": p} for x, y, p in s]} for s in strokes],
+            "strokes": [{"color": color, "points": [{"x": x, "y": y, "pressure": p} for x, y, p in s]}
+                        for s, color in zip(strokes, self.live_colors)],
         }), encoding="utf-8")
         return str(path)
 
