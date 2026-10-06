@@ -8,11 +8,21 @@ colors:
   graphite-disabled: "#817E78"
   paper-guide: "#D4D1CA"
   paper: "#FFFFFF"
-  warm-paper: "#F7F6F3"
-  hover-wash: "#EEEDE8"
-  hairline: "#E3E1DC"
-  focus-ring: "#9C9A94"
-  selected-wash: "#E8E6E1"
+  warm-paper: "#F2F1ED"
+  hover-wash: "#EEECE6"
+  hairline: "#D6D3CC"
+  control-border: "#B8B3AA"
+  control-hover: "#81796B"
+  focus-ring: "#786995"
+  selected-wash: "#E4DEF0"
+  selected-text: "#51445F"
+  quiet-hover: "#E4E1DA"
+  pressed-wash: "#DEDAD2"
+  menu-border: "#A6A198"
+  destructive-ink: "#912D27"
+  destructive-border: "#D6B6B1"
+  destructive-wash: "#FAEDEB"
+  focused-text: "#57466F"
 typography:
   title:
     fontFamily: "system sans-serif"
@@ -28,7 +38,7 @@ typography:
     fontWeight: 400
   metadata:
     fontFamily: "system sans-serif"
-    fontSize: "12px"
+    fontSize: "13px"
     fontWeight: 400
 rounded:
   control: "6px"
@@ -47,12 +57,12 @@ components:
     backgroundColor: "transparent"
     textColor: "{colors.graphite-ink}"
     rounded: "{rounded.control}"
-    padding: "7px 10px"
+    padding: "8px 12px"
   navigation-active:
-    backgroundColor: "{colors.selected-wash}"
-    textColor: "{colors.graphite-ink}"
+    backgroundColor: "{colors.graphite-ink}"
+    textColor: "{colors.paper}"
     rounded: "{rounded.control}"
-    padding: "7px 10px"
+    padding: "10px 12px"
 ---
 
 # Design System: HuionNote
@@ -69,12 +79,12 @@ A restrained native workspace in warm paper and graphite. Saved documents lead; 
 - Minimal page-only presentation mode.
 
 ## Colors
-Graphite is the primary ink and action colour. White is paper; warm paper surrounds documents. Selection and hover use tonal washes. Operational messages use plain language; colour never carries meaning alone.
+Graphite is the primary ink and action colour. White is paper; warm paper surrounds documents. Active navigation is graphite with white text. A muted lavender from the supplied logo marks document selection and keyboard focus. Operational messages use plain language; colour never carries meaning alone.
 
 **The Paper Before Paint Rule.** Use the established neutral palette before adding a hue.
 
 ## Typography
-Use the native system sans-serif family. Titles use 21px/600, brand 17px/600, body 14px and metadata 12px. Set native fonts through Qt rather than unsupported CSS font stacks.
+Use the native system sans-serif family. Titles use 21px/600, brand 17px/600, body 14px and supporting copy 13px. Page rows use a 14px/600 title above 12px metadata. Placeholder text uses the fully opaque muted ink, not Qt's default half-opacity. Set native fonts through Qt rather than unsupported CSS font stacks.
 
 ## Layout
 The default window is 1280×820 and the minimum is 860×580. A 196px sidebar anchors the shell. A resizable document-list/preview splitter adapts to available space. Content margins follow a 24px rhythm; document geometry maintains its aspect ratio at every zoom.
@@ -83,14 +93,14 @@ The default window is 1280×820 and the minimum is 860×580. A 196px sidebar anc
 Flat surfaces. Tonal separation and one-pixel hairlines establish depth. No shadows.
 
 ## Shapes
-Six-pixel control corners and rectangular paper. Native dialogs remain conventional; lists are compact document rows rather than cards.
+Six-pixel control corners and rectangular paper. Qt Fusion supplies consistent native widget behaviour across Linux themes. Dialogs use the same control styling as the main workspace. Page rows remain compact documents, not decorative cards.
 
 ## Components
 ### Navigation
 Notes is the opening workspace; Live notebook is the second destination. Settings and Activity stay near the sidebar foot.
 
 ### Document workspace
-Search, status filtering and multiselection sit above a document list. Selected handwriting renders as vectors. Transcript reading and side-by-side editing use tabs. Batch export and transcription remain contextual.
+Search, status filtering and multiselection sit above a document list. Selected handwriting renders as vectors. Transcript reading and editing use underlined active tabs. A cleared selection shows an explicit empty preview instead of the previous page. Batch export and transcription remain contextual.
 
 ### Live notebook
 Plain, ruled or dotted paper; fit page, fit width, zoom and pan. Pressure changes locally along smooth stroke outlines. Completed geometry is cached. Single-point marks remain visible.
@@ -99,7 +109,10 @@ Plain, ruled or dotted paper; fit page, fit width, zoom and pan. Pressure change
 F11 hides navigation, controls, activity and device identity. Escape restores the normal workspace. Connection changes never erase the page.
 
 ### Controls and feedback
-One graphite primary button leads sync. Quiet secondary actions share six-pixel corners. Keyboard focus remains visible. Long operations show progress and clear results; failures explain recovery.
+One graphite primary button leads sync. Secondary actions have visible control boundaries; navigation utilities remain quiet. Dropdowns use authored vector chevrons and styled list popups with 40px rows, not platform-default menu delegates. Checkboxes, radio choices, menus and scrollbars share the palette. Keyboard focus remains visible. Long operations show progress and clear results; failures explain recovery.
+
+### Interface language
+Use pages for the saved objects, Notes for their library, and transcript for editable text. Prefer literal actions and outcomes: Sync notebook, Export, Transcribe, Edit transcript, Save changes. Status labels name transcription state rather than ambiguous readiness. Dialog confirmation buttons name the next action, including Choose folder and Erase notebook memory. Avoid taglines, implementation jargon and unsupported claims.
 
 ## Do's and Don'ts
 - Do preserve the paper-and-graphite identity.

@@ -2,6 +2,16 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.1.1] — 2026-10-06
+
+### Changed
+- Consistent Qt Fusion controls, styled dropdown menus, checkboxes, radio buttons and scrollbars.
+- Stronger page selection, navigation, focus, control boundaries and readable placeholder text.
+- Separate title and metadata typography in the page list.
+- Direct, consistent interface wording; explicit export, transcription and erase actions.
+- Empty-selection preview and save-button states that match the current workflow.
+- Updated transparent logo in the desktop launcher, window and sidebar.
+
 ## [1.1.0] — 2026-10-06
 
 ### Added

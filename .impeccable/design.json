@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-06T12:30:00+01:00",
+  "generatedAt": "2026-10-06T14:03:26Z",
   "title": "Design System: HuionNote",
   "extensions": {
     "typographyMeta": {
@@ -41,7 +41,7 @@
       "refersTo": "button-primary",
       "description": "Main sync action.",
       "html": "<button class=\"ds-primary\">Sync notebook</button>",
-      "css": ".ds-primary{background:#25231F;color:#FFF;border:1px solid transparent;border-radius:6px;padding:8px 14px;font:14px system-ui}.ds-primary:hover{background:#11100E}.ds-primary:focus-visible{outline:1px solid #9C9A94}.ds-primary:disabled{background:#E8E6E1;color:#625F59}"
+      "css": ".ds-primary{background:#25231F;color:#FFF;border:1px solid transparent;border-radius:6px;padding:8px 14px;font:14px system-ui}.ds-primary:hover{background:#11100E}.ds-primary:focus-visible{outline:2px solid #786995}.ds-primary:disabled{background:#E4E1DA;color:#625F59}"
     },
     {
       "name": "Quiet button",
@@ -49,7 +49,7 @@
       "refersTo": "button-quiet",
       "description": "Contextual document action.",
       "html": "<button class=\"ds-quiet\">Export…</button>",
-      "css": ".ds-quiet{background:transparent;color:#25231F;border:1px solid transparent;border-radius:6px;padding:7px 10px;font:14px system-ui}.ds-quiet:hover{background:#EEEDE8}.ds-quiet:focus-visible{outline:1px solid #9C9A94}"
+      "css": ".ds-quiet{background:transparent;color:#25231F;border:1px solid transparent;border-radius:6px;padding:8px 12px;font:14px system-ui}.ds-quiet:hover{background:#E4E1DA}.ds-quiet:focus-visible{outline:2px solid #786995}"
     },
     {
       "name": "Navigation",
@@ -57,21 +57,21 @@
       "refersTo": "navigation-active",
       "description": "Notes-first destinations.",
       "html": "<button class=\"ds-nav\">Notes</button>",
-      "css": ".ds-nav{background:#E8E6E1;color:#25231F;border:1px solid transparent;border-radius:6px;padding:7px 10px;font:600 14px system-ui}.ds-nav:hover{background:#EEEDE8}.ds-nav:focus-visible{outline:1px solid #9C9A94}"
+      "css": ".ds-nav{background:#25231F;color:#FFF;border:1px solid transparent;border-radius:6px;padding:10px 12px;font:600 14px system-ui}.ds-nav:focus-visible{outline:2px solid #786995}"
     },
     {
       "name": "Search field",
       "kind": "input",
       "description": "Find titles and transcripts.",
       "html": "<input class=\"ds-search\" placeholder=\"Search titles and transcripts\" aria-label=\"Search notes\">",
-      "css": ".ds-search{background:#FFF;color:#25231F;border:1px solid #E3E1DC;border-radius:6px;padding:8px;font:14px system-ui}.ds-search:hover{border-color:#9C9A94}.ds-search:focus-visible{outline:1px solid #9C9A94}"
+      "css": ".ds-search{background:#FFF;color:#25231F;border:1px solid #B8B3AA;border-radius:6px;padding:9px 12px;font:14px system-ui}.ds-search::placeholder{color:#625F59;opacity:1}.ds-search:hover{border-color:#81796B}.ds-search:focus-visible{outline:2px solid #786995}"
     },
     {
       "name": "Document row",
       "kind": "custom",
       "description": "Compact title, date and transcript state.",
-      "html": "<div class=\"ds-row\" tabindex=\"0\">Meeting notes<br><small>06 Oct 2026 · Ready</small></div>",
-      "css": ".ds-row{background:#FFF;color:#25231F;border-bottom:1px solid #EEEDE8;padding:14px 12px;font:14px system-ui}.ds-row:hover{background:#F7F6F3}.ds-row:focus-visible{outline:1px solid #9C9A94}"
+      "html": "<div class=\"ds-row\" tabindex=\"0\">Meeting notes<br><small>06 Oct 2026 · Not transcribed</small></div>",
+      "css": ".ds-row{background:#FFF;color:#25231F;border-radius:6px;padding:13px 12px;font:600 14px system-ui}.ds-row small{color:#625F59;font:12px system-ui}.ds-row:hover{background:#F2F1ED}.ds-row:focus-visible{outline:1px solid #786995;background:#E4DEF0}"
     }
   ],
   "narrative": {

@@ -11,15 +11,15 @@ from typing import Any
 if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY"):
     os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, QUrl
-from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QIcon, QShortcut, QKeySequence, QDesktopServices
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, QUrl, QSize
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QIcon, QShortcut, QKeySequence, QDesktopServices, QPalette, QFont
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QStackedWidget, QSplitter, QListWidget, QListWidgetItem,
     QAbstractItemView, QLineEdit, QComboBox, QTextEdit, QTextBrowser, QTabWidget,
     QDialog, QDialogButtonBox, QFormLayout, QFileDialog, QMessageBox, QCheckBox,
-    QProgressBar, QMenu, QSizePolicy,
+    QProgressBar, QMenu, QSizePolicy, QStyledItemDelegate, QRadioButton, QListView,
 )
 
 from huion.ink import PAGE_WIDTH, PAGE_HEIGHT, outline, svg_document
@@ -28,38 +28,75 @@ from huion_note_pipeline import __version__
 from huion_note_pipeline.application import HuionApplication
 from huion_note_pipeline.enums import NoteStatus
 
-INK, MUTED, PAPER, WARM, LINE = "#25231F", "#625F59", "#FFFFFF", "#F7F6F3", "#E3E1DC"
+INK, MUTED, PAPER, WARM, LINE = "#25231F", "#625F59", "#FFFFFF", "#F2F1ED", "#D6D3CC"
+ASSETS = Path(__file__).resolve().parents[3] / "assets"
 STYLE = """
 QWidget { color: #25231F; font-size: 14px; }
 QMainWindow, QWidget#workspace { background: #FFFFFF; }
-QWidget#sidebar, QWidget#paperWell { background: #F7F6F3; }
-QFrame#topbar { border-bottom: 1px solid #E3E1DC; background: #FFFFFF; }
+QDialog { background: #FFFFFF; }
+QWidget#sidebar, QWidget#paperWell { background: #F2F1ED; }
+QWidget#sidebar { border-right: 1px solid #D6D3CC; }
+QFrame#topbar { border-bottom: 1px solid #D6D3CC; background: #FFFFFF; }
 QLabel#title { font-size: 21px; font-weight: 600; }
 QLabel#brand { font-size: 17px; font-weight: 600; }
-QLabel#muted { color: #625F59; font-size: 12px; }
-QPushButton { border: 1px solid transparent; border-radius: 6px; padding: 7px 10px; background: transparent; }
-QPushButton:hover { background: #EEEDE8; }
-QPushButton:checked { background: #E8E6E1; font-weight: 600; }
-QPushButton:focus { border: 1px solid #9C9A94; }
+QLabel#muted { color: #625F59; font-size: 13px; }
+QLabel#empty { color: #625F59; padding: 24px; background: #F2F1ED; }
+QPushButton { border: 1px solid #D6D3CC; border-radius: 6px; padding: 8px 12px; background: #FFFFFF; }
+QPushButton:hover { background: #EEECE6; border-color: #A6A198; }
+QPushButton:pressed { background: #DEDAD2; }
+QPushButton:checked { background: #25231F; color: #FFFFFF; font-weight: 600; border-color: #25231F; }
+QPushButton:focus { border: 2px solid #786995; padding: 7px 11px; }
 QPushButton:disabled { color: #817E78; }
+QPushButton#quiet { background: transparent; border-color: transparent; }
+QPushButton#quiet:hover { background: #E4E1DA; }
+QPushButton#quiet:focus { border-color: #786995; }
+QPushButton#nav { text-align: left; border-color: transparent; background: transparent; padding: 10px 12px; }
+QPushButton#nav:hover { background: #E4E1DA; }
+QPushButton#nav:checked { background: #25231F; color: #FFFFFF; }
+QPushButton#nav:focus { border-color: #786995; }
 QPushButton#primary { background: #25231F; color: #FFFFFF; padding: 8px 14px; }
 QPushButton#primary:hover { background: #11100E; }
-QPushButton#primary:disabled { background: #E8E6E1; color: #625F59; }
-QLineEdit, QComboBox { background: #FFFFFF; border: 1px solid #E3E1DC; border-radius: 6px; padding: 8px; }
-QLineEdit:focus, QComboBox:focus { border: 1px solid #9C9A94; }
+QPushButton#primary:disabled { background: #E4E1DA; color: #625F59; }
+QPushButton#danger { color: #912D27; border-color: #D6B6B1; }
+QPushButton#danger:hover { background: #FAEDEB; }
+QLineEdit, QComboBox { background: #FFFFFF; border: 1px solid #B8B3AA; border-radius: 6px; padding: 9px 12px; selection-background-color: #E4DEF0; selection-color: #25231F; }
+QLineEdit, QTextEdit { placeholder-text-color: #625F59; }
+QLineEdit:hover, QComboBox:hover { border-color: #81796B; }
+QLineEdit:focus, QComboBox:focus { border: 2px solid #786995; padding: 8px 11px; }
+QComboBox { padding-right: 36px; min-width: 112px; }
+QComboBox:focus { padding-right: 35px; }
+QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 30px; border: 0; }
+QComboBox::down-arrow { image: url(__CHEVRON__); width: 14px; height: 14px; }
+QComboBox QAbstractItemView { background: #FFFFFF; color: #25231F; border: 1px solid #A6A198; padding: 5px; outline: 0; selection-background-color: #E4DEF0; selection-color: #25231F; }
+QComboBox QAbstractItemView::item { min-height: 32px; padding: 4px 10px; border: 0; border-radius: 4px; }
+QComboBox QAbstractItemView::item:hover { background: #EEECE6; }
+QComboBox QAbstractItemView::item:selected { background: #E4DEF0; color: #25231F; }
 QListWidget { border: 0; background: #FFFFFF; }
-QListWidget:focus { border: 1px solid #9C9A94; }
-QListWidget::item { border-bottom: 1px solid #EEEDE8; padding: 14px 12px; }
-QListWidget::item:selected { background: #EEEDE8; color: #25231F; }
-QListWidget::item:hover { background: #F7F6F3; }
-QTextEdit, QTextBrowser { border: 0; padding: 12px; background: #FFFFFF; selection-background-color: #E8E6E1; selection-color: #25231F; }
-QTabWidget::pane { border: 0; border-top: 1px solid #E3E1DC; }
-QTabBar::tab { padding: 9px 14px; background: #F7F6F3; color: #625F59; }
-QTabBar::tab:selected { background: #FFFFFF; color: #25231F; }
-QSplitter::handle { background: #E3E1DC; width: 1px; }
-QProgressBar { border: 0; background: #EEEDE8; max-height: 3px; }
-QProgressBar::chunk { background: #625F59; }
-"""
+QListWidget:focus { border: 1px solid #786995; }
+QTextEdit, QTextBrowser { border: 0; padding: 16px; background: #FFFFFF; selection-background-color: #E4DEF0; selection-color: #25231F; }
+QTabWidget::pane { border: 0; border-top: 1px solid #D6D3CC; }
+QTabBar::tab { padding: 11px 14px; background: #FFFFFF; color: #625F59; border-bottom: 2px solid transparent; }
+QTabBar::tab:hover { background: #F2F1ED; color: #25231F; }
+QTabBar::tab:selected { border-bottom: 2px solid #25231F; color: #25231F; font-weight: 600; }
+QSplitter::handle { background: #D6D3CC; width: 1px; }
+QCheckBox, QRadioButton { spacing: 10px; padding: 8px 0; }
+QCheckBox::indicator { width: 17px; height: 17px; border: 1px solid #81796B; border-radius: 4px; background: #FFFFFF; }
+QCheckBox::indicator:checked { background: #25231F; border-color: #25231F; image: url(__CHECK__); }
+QRadioButton::indicator { width: 17px; height: 17px; border: 1px solid #81796B; border-radius: 9px; background: #FFFFFF; }
+QRadioButton::indicator:checked { background: #25231F; border: 4px solid #E4DEF0; width: 11px; height: 11px; }
+QCheckBox:focus, QRadioButton:focus { color: #57466F; }
+QCheckBox:disabled, QRadioButton:disabled { color: #817E78; }
+QMenu { background: #FFFFFF; border: 1px solid #B8B3AA; padding: 6px; }
+QMenu::item { padding: 9px 16px; border-radius: 4px; }
+QMenu::item:selected { background: #E4DEF0; color: #25231F; }
+QScrollBar:vertical { background: #F2F1ED; width: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: #B8B3AA; min-height: 28px; border-radius: 4px; }
+QScrollBar::handle:vertical:hover { background: #81796B; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+QProgressBar { border: 0; background: #E4E1DA; max-height: 3px; }
+QProgressBar::chunk { background: #786995; }
+""".replace("__CHEVRON__", (ASSETS / "chevron-down.svg").as_posix()).replace("__CHECK__", (ASSETS / "check.svg").as_posix())
 
 
 def label(text: str, role: str = "") -> QLabel:
@@ -68,12 +105,53 @@ def label(text: str, role: str = "") -> QLabel:
     return widget
 
 
-def button(text: str, callback: Any, primary: bool = False) -> QPushButton:
+def button(text: str, callback: Any, primary: bool = False, role: str = "") -> QPushButton:
     widget = QPushButton(text)
-    if primary:
-        widget.setObjectName("primary")
+    widget.setObjectName("primary" if primary else role)
     widget.clicked.connect(callback)
     return widget
+
+
+def combo_box(items: list[str], name: str) -> QComboBox:
+    widget = QComboBox()
+    widget.setView(QListView())
+    widget.addItems(items)
+    widget.setAccessibleName(name)
+    return widget
+
+
+class NoteDelegate(QStyledItemDelegate):
+    """Native list interactions with a readable title/metadata hierarchy."""
+
+    def sizeHint(self, option, index) -> QSize:
+        return QSize(200, 76)
+
+    def paint(self, painter, option, index) -> None:
+        from PySide6.QtWidgets import QStyle
+        painter.save()
+        rect = option.rect.adjusted(0, 2, -2, -2)
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor("#E4DEF0" if selected else WARM if hovered else PAPER))
+        painter.setPen(QPen(QColor("#786995" if option.state & QStyle.StateFlag.State_HasFocus else LINE), 1)
+                       if selected else Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(QRectF(rect), 6, 6)
+        title, _, meta = index.data().partition("\n")
+        font = option.font
+        font.setPixelSize(14)
+        font.setWeight(QFont.Weight.DemiBold)
+        painter.setFont(font)
+        painter.setPen(QColor(INK))
+        painter.drawText(rect.adjusted(12, 13, -12, -36), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                         painter.fontMetrics().elidedText(title, Qt.TextElideMode.ElideRight, rect.width() - 24))
+        font.setPixelSize(12)
+        font.setWeight(QFont.Weight.Normal)
+        painter.setFont(font)
+        painter.setPen(QColor("#51445F" if selected else MUTED))
+        painter.drawText(rect.adjusted(12, 39, -12, -10), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                         painter.fontMetrics().elidedText(meta, Qt.TextElideMode.ElideRight, rect.width() - 24))
+        painter.restore()
 
 
 class PaperView(QWidget):
@@ -253,14 +331,16 @@ def view_controls(view: PaperView) -> QWidget:
 class SettingsDialog(QDialog):
     def __init__(self, service: HuionApplication, parent: QWidget) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Notebook settings")
-        self.setMinimumWidth(520)
+        self.setWindowTitle("Settings")
+        self.setMinimumWidth(560)
         self.service = service
         form = QFormLayout(self)
         form.setContentsMargins(24, 24, 24, 24)
+        form.setVerticalSpacing(14)
+        form.addRow(label("Settings", "title"))
         self.output = QLineEdit(service.output_directory)
         self.mac = QLineEdit(service.mac_address)
-        self.mac.setPlaceholderText("Automatic Bluetooth discovery")
+        self.mac.setPlaceholderText("Leave blank to find your notebook automatically")
         self.pin = QLineEdit(load_config().get("pin", ""))
         self.pin.setEchoMode(QLineEdit.EchoMode.Password)
         self.gemini = QLineEdit(service.gemini_key)
@@ -268,16 +348,19 @@ class SettingsDialog(QDialog):
         form.addRow("Notes folder", self.output)
         form.addRow("", button("Choose folder…", self.choose_folder))
         form.addRow("Bluetooth address", self.mac)
+        self.pin.setPlaceholderText("6 digits, if your notebook uses a PIN")
         form.addRow("Notebook PIN (optional)", self.pin)
         form.addRow("Gemini API key", self.gemini)
-        hint = label("AI transcription sends the selected page to Google.\nLocal OCR stays on this computer.", "muted")
+        hint = label("Gemini receives only the pages you choose to transcribe.\nOn-device transcription does not upload your pages.", "muted")
         hint.setWordWrap(True)
         form.addRow(hint)
-        form.addRow(button("Clear stored pages from notebook…", parent.clear_device))
+        form.addRow(button("Erase notebook memory…", parent.clear_device, role="danger"))
         self.error = label("", "muted")
         self.error.setWordWrap(True)
         form.addRow(self.error)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText("Save settings")
+        buttons.button(QDialogButtonBox.StandardButton.Save).setObjectName("primary")
         buttons.accepted.connect(self.save)
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
@@ -306,6 +389,16 @@ class HuionNoteWindow(QMainWindow):
 
     def __init__(self, pipeline=None, bridge=None, service=None, registry=None, config=None) -> None:
         super().__init__()
+        app = QApplication.instance()
+        app.setStyle("Fusion")
+        palette = app.palette()
+        for role, color in ((QPalette.ColorRole.Window, PAPER), (QPalette.ColorRole.Base, PAPER),
+                            (QPalette.ColorRole.Text, INK), (QPalette.ColorRole.WindowText, INK),
+                            (QPalette.ColorRole.Button, PAPER), (QPalette.ColorRole.ButtonText, INK),
+                            (QPalette.ColorRole.PlaceholderText, MUTED),
+                            (QPalette.ColorRole.Highlight, "#E4DEF0"), (QPalette.ColorRole.HighlightedText, INK)):
+            palette.setColor(role, QColor(color))
+        app.setPalette(palette)
         self.service = service or HuionApplication(pipeline, bridge)
         self._busy = False
         self._draft_dirty = False
@@ -320,7 +413,7 @@ class HuionNoteWindow(QMainWindow):
         self.resize(1280, 820)
         self.setMinimumSize(860, 580)
         self.setStyleSheet(STYLE)
-        icon = Path(__file__).resolve().parents[3] / "assets" / "huionnote.png"
+        icon = ASSETS / "huionnote.png"
         if icon.exists():
             self.setWindowIcon(QIcon(str(icon)))
         self._build()
@@ -343,6 +436,7 @@ class HuionNoteWindow(QMainWindow):
         except Exception as exc:
             self.log(str(exc))
         self.service.start_stream()
+        self.refresh_connection()
         self.load_library()
         self._show_page(0)
         for shortcut, callback in (
@@ -364,12 +458,17 @@ class HuionNoteWindow(QMainWindow):
         self.sidebar.setFixedWidth(196)
         side = QVBoxLayout(self.sidebar)
         side.setContentsMargins(14, 24, 14, 18)
-        side.addWidget(label("HuionNote", "brand"))
-        side.addWidget(label("A place for your pages", "muted"))
+        brand = QHBoxLayout()
+        logo = QLabel()
+        logo.setPixmap(QIcon(str(ASSETS / "huionnote.png")).pixmap(36, 36))
+        brand.addWidget(logo)
+        brand.addWidget(label("HuionNote", "brand"))
+        brand.addStretch()
+        side.addLayout(brand)
         side.addSpacing(28)
         self.nav = []
         for i, title in enumerate(("Notes", "Live notebook")):
-            item = button(title, lambda checked=False, n=i: self._show_page(n))
+            item = button(title, lambda checked=False, n=i: self._show_page(n), role="nav")
             item.setCheckable(True)
             side.addWidget(item)
             self.nav.append(item)
@@ -378,10 +477,10 @@ class HuionNoteWindow(QMainWindow):
         self.device_label.setWordWrap(True)
         self.device_label.setMinimumHeight(44)
         side.addWidget(self.device_label)
-        side.addWidget(button("Reconnect", self.retry_connection))
+        side.addWidget(button("Reconnect", self.retry_connection, role="quiet"))
         side.addSpacing(16)
-        side.addWidget(button("Activity", lambda: self.activity.setVisible(not self.activity.isVisible())))
-        side.addWidget(button("Settings", self.open_settings))
+        side.addWidget(button("Activity log", lambda: self.activity.setVisible(not self.activity.isVisible()), role="quiet"))
+        side.addWidget(button("Settings", self.open_settings, role="quiet"))
         side.addWidget(label(f"HuionNote {__version__}", "muted"))
         root.addWidget(self.sidebar)
         content = QWidget()
@@ -396,7 +495,6 @@ class HuionNoteWindow(QMainWindow):
         bar.addWidget(self.page_title)
         bar.addStretch()
         self.top_status = label("Connecting", "muted")
-        bar.addWidget(self.top_status)
         self.sync_button = button("Sync notebook", self.sync_now, True)
         bar.addWidget(self.sync_button)
         column.addWidget(self.topbar)
@@ -413,7 +511,7 @@ class HuionNoteWindow(QMainWindow):
         self.activity.setMaximumHeight(110)
         self.activity.hide()
         column.addWidget(self.activity)
-        self.footer = label("Your original pages stay on the notebook after sync.", "muted")
+        self.footer = label("Sync to import saved pages. Originals stay on your notebook.", "muted")
         self.footer.setContentsMargins(24, 8, 24, 8)
         column.addWidget(self.footer)
         root.addWidget(content, 1)
@@ -427,13 +525,16 @@ class HuionNoteWindow(QMainWindow):
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search titles and transcripts")
         self.search.setClearButtonEnabled(True)
+        self.search.setAccessibleName("Search notes")
         self.search.textChanged.connect(self.refresh_notes)
         controls.addWidget(self.search, 1)
-        self.filter = QComboBox()
-        self.filter.addItems(["All pages", "Needs transcription", "Transcribed", "Needs attention"])
+        self.filter = combo_box(["All pages", "Not transcribed", "Transcribed", "Transcription failed"],
+                                "Filter pages by transcript status")
         self.filter.currentIndexChanged.connect(self.refresh_notes)
         controls.addWidget(self.filter)
-        controls.addWidget(button("Refresh", self.load_library))
+        reload_button = button("Reload", self.load_library, role="quiet")
+        reload_button.setToolTip("Reload pages from your notes folder")
+        controls.addWidget(reload_button)
         layout.addLayout(controls)
         self.splitter = QSplitter()
         left = QWidget()
@@ -442,6 +543,9 @@ class HuionNoteWindow(QMainWindow):
         self.library_count = label("0 pages", "muted")
         list_layout.addWidget(self.library_count)
         self.note_list = QListWidget()
+        self.note_list.setItemDelegate(NoteDelegate(self.note_list))
+        self.note_list.setMouseTracking(True)
+        self.note_list.setAccessibleName("Saved pages")
         self.note_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.note_list.setWordWrap(True)
         self.note_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -449,7 +553,7 @@ class HuionNoteWindow(QMainWindow):
         self.note_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.note_list.customContextMenuRequested.connect(self.note_menu)
         list_layout.addWidget(self.note_list, 1)
-        self.empty_list = label("Sync your notebook to bring pages here.", "muted")
+        self.empty_list = label("No saved pages. Sync your notebook to import them.", "muted")
         self.empty_list.setWordWrap(True)
         list_layout.addWidget(self.empty_list)
         actions = QHBoxLayout()
@@ -462,10 +566,10 @@ class HuionNoteWindow(QMainWindow):
         detail = QWidget()
         detail_layout = QVBoxLayout(detail)
         detail_layout.setContentsMargins(16, 8, 0, 0)
-        self.note_title = label("Your pages, ready to read", "title")
+        self.note_title = label("Preview", "title")
         self.note_title.setWordWrap(True)
         detail_layout.addWidget(self.note_title)
-        self.note_meta = label("Select a page to view handwriting and its transcript.", "muted")
+        self.note_meta = label("", "muted")
         self.note_meta.setWordWrap(True)
         detail_layout.addWidget(self.note_meta)
         self.preview = PaperView()
@@ -487,17 +591,24 @@ class HuionNoteWindow(QMainWindow):
         self.editor = QTextEdit()
         self.editor.setAcceptRichText(False)
         self.editor.setEnabled(False)
-        self.editor.setPlaceholderText("Review your transcript here, or write one yourself. Choose Transcribe to start from the handwriting.")
+        self.editor.setPlaceholderText("Write or edit the transcript. Use Transcribe to convert the handwriting first.")
+        self.editor.setAccessibleName("Edit page transcript")
         self.editor.textChanged.connect(self.editor_changed)
         self.review_splitter.addWidget(self.review_preview)
         self.review_splitter.addWidget(self.editor)
         self.review_splitter.setChildrenCollapsible(False)
         self.review_splitter.setSizes([400, 400])
         review_layout.addWidget(self.review_splitter, 1)
-        review_layout.addWidget(button("Save transcript", self.save_transcript), alignment=Qt.AlignmentFlag.AlignRight)
-        self.detail_tabs.addTab(review, "Review && edit")
+        self.save_transcript_button = button("Save changes", self.save_transcript)
+        self.save_transcript_button.setEnabled(False)
+        review_layout.addWidget(self.save_transcript_button, alignment=Qt.AlignmentFlag.AlignRight)
+        self.detail_tabs.addTab(review, "Edit transcript")
         self.detail_tabs.currentChanged.connect(self.active_preview_changed)
         detail_layout.addWidget(self.detail_tabs, 1)
+        self.no_selection = label("Select a page to preview your handwriting.", "empty")
+        self.no_selection.setWordWrap(True)
+        self.no_selection.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        detail_layout.addWidget(self.no_selection, 1)
         self.splitter.addWidget(detail)
         self.splitter.setSizes([300, 700])
         self.splitter.setCollapsible(0, False)
@@ -519,18 +630,19 @@ class HuionNoteWindow(QMainWindow):
         tools.addStretch()
         tools.addWidget(button("Save page", self.save_live))
         tools.addWidget(button("New page", self.new_page))
-        tools.addWidget(button("Present · F11", self.toggle_presentation))
+        present = button("Present", self.toggle_presentation)
+        present.setToolTip("Show only the page for screen-sharing (F11). Press Escape to return.")
+        tools.addWidget(present)
         layout.addWidget(self.live_toolbar)
         self.canvas = LiveCanvas()
         self.live_view_controls = view_controls(self.canvas)
         control_layout = self.live_view_controls.layout()
-        self.paper_choice = QComboBox()
-        self.paper_choice.addItems(["Plain", "Ruled", "Dotted"])
+        self.paper_choice = combo_box(["Plain", "Ruled", "Dotted"], "Paper guides")
         self.paper_choice.currentTextChanged.connect(self.change_paper)
         control_layout.insertWidget(0, self.paper_choice)
         layout.addWidget(self.live_view_controls)
         layout.addWidget(self.canvas, 1)
-        self.live_hint = label("Write on the X10. Pages are recoverable locally. Ctrl+wheel to zoom; drag to pan.", "muted")
+        self.live_hint = label("Autosaves every 3 seconds · Ctrl+scroll to zoom · Drag to pan", "muted")
         layout.addWidget(self.live_hint)
         return page
 
@@ -553,13 +665,13 @@ class HuionNoteWindow(QMainWindow):
         snapshot = self.service.device_snapshot()
         if snapshot.connected is True:
             self.top_status.setText("Connected")
-            self.device_label.setText("Huion Note X10" + (f" · {snapshot.battery}%" if snapshot.battery is not None else ""))
+            self.device_label.setText("X10 connected" + (f" · {snapshot.battery}% battery" if snapshot.battery is not None else ""))
         elif snapshot.connected is None:
             self.top_status.setText("Connecting")
-            self.device_label.setText("Wake the X10 with your pen.")
+            self.device_label.setText("Connecting to X10…\nTouch the paper with your pen.")
         else:
             self.top_status.setText("Offline")
-            self.device_label.setText("Notebook offline. Saved pages are available.")
+            self.device_label.setText("X10 disconnected\nSaved pages remain available.")
 
     def retry_connection(self) -> None:
         if not self._busy:
@@ -597,8 +709,8 @@ class HuionNoteWindow(QMainWindow):
             if filter_index == 3 and note.status != NoteStatus.FAILED:
                 continue
             title = Path(note.svg_path).stem.replace("_", " ").title()
-            status = {NoteStatus.SYNCED: "Ready", NoteStatus.CONVERTING: "Transcribing",
-                      NoteStatus.CONVERTED: "Transcribed", NoteStatus.FAILED: "Needs attention"}[note.status]
+            status = {NoteStatus.SYNCED: "Not transcribed", NoteStatus.CONVERTING: "Transcribing…",
+                      NoteStatus.CONVERTED: "Transcribed", NoteStatus.FAILED: "Transcription failed"}[note.status]
             item = QListWidgetItem(f"{title}\n{note.synced_at:%d %b %Y} · {status}")
             item.setToolTip(f"{title}\n{note.synced_at:%d %b %Y} · {status}")
             item.setData(Qt.ItemDataRole.UserRole, note)
@@ -609,7 +721,7 @@ class HuionNoteWindow(QMainWindow):
         count = self.note_list.count()
         self.library_count.setText(f"{count} page{'s' if count != 1 else ''}")
         self.empty_list.setVisible(count == 0)
-        self.empty_list.setText("No matching pages. Try another search or filter." if self._all_notes else "Sync your notebook to bring pages here.")
+        self.empty_list.setText("No matches. Clear the search or change the filter." if self._all_notes else "No saved pages. Sync your notebook to import them.")
         self.selection_changed()
 
     def selected_notes(self) -> list:
@@ -619,8 +731,24 @@ class HuionNoteWindow(QMainWindow):
         notes = self.selected_notes()
         self.export_button.setEnabled(bool(notes) and not self._busy)
         self.transcribe_button.setEnabled(bool(notes) and not self._busy)
+        self.library_count.setText(f"{self.note_list.count()} pages · {len(notes)} selected" if notes else
+                                   f"{self.note_list.count()} page{'s' if self.note_list.count() != 1 else ''}")
         if not notes:
+            if self._editor_dirty:
+                return
+            self._selected_note = None
+            self.note_title.setText("Preview")
+            self.note_meta.hide()
+            self.preview_controls.hide()
+            self.detail_tabs.hide()
+            self.no_selection.show()
+            self.editor.setEnabled(False)
+            self.save_transcript_button.setEnabled(False)
             return
+        self.no_selection.hide()
+        self.note_meta.show()
+        self.detail_tabs.show()
+        self.active_preview_changed(self.detail_tabs.currentIndex())
         note = notes[0]
         if self._selected_note and self._selected_note.svg_path == note.svg_path:
             return
@@ -641,9 +769,10 @@ class HuionNoteWindow(QMainWindow):
         self.review_preview.set_svg(note.svg_path)
         markdown = Path(note.markdown_path).read_text(encoding="utf-8") if note.markdown_path and Path(note.markdown_path).exists() else ""
         self.reader.document().setBaseUrl(QUrl.fromLocalFile(str(Path(note.svg_path).parent) + "/"))
-        self.reader.setMarkdown(markdown or "No transcript yet.\n\nChoose **Transcribe** for local OCR or AI transcription.")
+        self.reader.setMarkdown(markdown or "## No transcript yet\n\nChoose **Transcribe** to convert this page to text, or open **Edit transcript** to write your own.")
         self.editor.setPlainText(markdown)
         self._editor_dirty = False
+        self.save_transcript_button.setEnabled(False)
 
     def open_transcript_link(self, url: QUrl) -> None:
         if url.scheme() in ("https", "http"):
@@ -667,6 +796,7 @@ class HuionNoteWindow(QMainWindow):
 
     def editor_changed(self) -> None:
         self._editor_dirty = True
+        self.save_transcript_button.setEnabled(self._selected_note is not None and not self._busy)
 
     def save_transcript(self) -> bool:
         if not self._selected_note:
@@ -674,6 +804,7 @@ class HuionNoteWindow(QMainWindow):
         try:
             self.service.save_markdown(self._selected_note, self.editor.toPlainText())
             self._editor_dirty = False
+            self.save_transcript_button.setEnabled(False)
             self.reader.setMarkdown(self.editor.toPlainText())
             self.log("Transcript saved.")
             self.load_library()
@@ -701,7 +832,7 @@ class HuionNoteWindow(QMainWindow):
         menu = QMenu(self)
         menu.addAction("Export selected pages…", self.export_selected)
         menu.addAction("Transcribe selected pages…", self.transcribe_selected)
-        menu.addAction("Open original in default app", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.selected_notes()[0].svg_path)))
+        menu.addAction("Open handwriting externally", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.selected_notes()[0].svg_path)))
         menu.exec(self.note_list.mapToGlobal(position))
 
     def run_job(self, name: str, work: Any) -> None:
@@ -711,6 +842,7 @@ class HuionNoteWindow(QMainWindow):
         self.sync_button.setEnabled(False)
         self.export_button.setEnabled(False)
         self.transcribe_button.setEnabled(False)
+        self.save_transcript_button.setEnabled(False)
         self.progress.setRange(0, 0)
         self.progress.show()
         self.log(f"{name}…")
@@ -736,6 +868,7 @@ class HuionNoteWindow(QMainWindow):
         self.sync_button.setEnabled(True)
         self.export_button.setEnabled(bool(self.selected_notes()))
         self.transcribe_button.setEnabled(bool(self.selected_notes()))
+        self.save_transcript_button.setEnabled(self._editor_dirty and self._selected_note is not None)
 
     def job_complete(self, name: str, result: Any) -> None:
         self.finish_job()
@@ -772,6 +905,9 @@ class HuionNoteWindow(QMainWindow):
         dialog = QDialog(self)
         dialog.setWindowTitle("Export pages")
         layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+        dialog.setMinimumWidth(440)
         layout.addWidget(label(f"Export {len(notes)} selected page{'s' if len(notes) != 1 else ''}", "title"))
         checks = {}
         for fmt, name in (("svg", "SVG · vector handwriting"), ("pdf", "PDF · share or print"),
@@ -783,8 +919,16 @@ class HuionNoteWindow(QMainWindow):
                 check.setEnabled(any((n.json_path and Path(n.json_path).suffix == ".json") if fmt == "json" else n.markdown_path for n in notes))
             checks[fmt] = check
             layout.addWidget(check)
-        layout.addWidget(label("Existing files are kept. Only available transcripts and raw data are exported.", "muted"))
+        export_hint = label("Existing files won't be overwritten. Transcripts and pen data are included only when available.", "muted")
+        export_hint.setWordWrap(True)
+        layout.addWidget(export_hint)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Choose folder…")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setObjectName("primary")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
+        for check in checks.values():
+            check.toggled.connect(lambda: buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
+                any(c.isChecked() and c.isEnabled() for c in checks.values())))
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
@@ -801,25 +945,35 @@ class HuionNoteWindow(QMainWindow):
         notes = [n for n in self.selected_notes() if n.status in (NoteStatus.SYNCED, NoteStatus.FAILED)]
         if not notes or self._busy:
             if not self._busy:
-                self.log("These pages already have transcripts. Open Review & edit to make changes.")
+                self.log("The selected pages already have transcripts. Use Edit transcript to make changes.")
             return
         dialog = QDialog(self)
         dialog.setWindowTitle("Transcribe handwriting")
         layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+        dialog.setMinimumWidth(440)
         layout.addWidget(label(f"Transcribe {len(notes)} page{'s' if len(notes) != 1 else ''}", "title"))
-        method = QComboBox()
-        method.addItems(["Local OCR · stays on this computer", "AI · sends selected pages to Google Gemini"])
-        layout.addWidget(method)
-        hint = label("Local OCR requires Tesseract. AI requires a Gemini API key in Settings.", "muted")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
+        local = QRadioButton("On this computer")
+        local.setChecked(True)
+        cloud_method = QRadioButton("Google Gemini")
+        layout.addWidget(local)
+        local_hint = label("Uses installed OCR tools. Your pages stay on this computer.", "muted")
+        local_hint.setWordWrap(True)
+        layout.addWidget(local_hint)
+        layout.addWidget(cloud_method)
+        cloud_hint = label("Sends selected pages to Google for transcription. Requires a Gemini API key in Settings.", "muted")
+        cloud_hint.setWordWrap(True)
+        layout.addWidget(cloud_hint)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Transcribe")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setObjectName("primary")
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        cloud = method.currentIndex() == 1
+        cloud = cloud_method.isChecked()
         if cloud and not self.service.gemini_key:
             QMessageBox.information(self, "Add a Gemini key", "Add your Gemini API key in Settings, then try again.")
             return
@@ -951,11 +1105,17 @@ class HuionNoteWindow(QMainWindow):
     def clear_device(self) -> None:
         if self._busy:
             return
-        answer = QMessageBox.question(self, "Clear notebook memory?",
-            "This permanently removes every stored page from the X10.\n\nSaved local pages stay on this computer. Unsynced pages will be lost. Sync and check your saved pages first.",
-            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes,
-            QMessageBox.StandardButton.Cancel)
-        if answer == QMessageBox.StandardButton.Yes:
+        confirmation = QMessageBox(self)
+        confirmation.setWindowTitle("Erase notebook memory?")
+        confirmation.setIcon(QMessageBox.Icon.Warning)
+        confirmation.setText("Permanently erase all pages stored on the X10?")
+        confirmation.setInformativeText("Pages saved on this computer are kept. Pages you haven't synced will be lost. Sync and check your saved pages before erasing.")
+        confirmation.addButton(QMessageBox.StandardButton.Cancel)
+        erase = confirmation.addButton("Erase notebook memory", QMessageBox.ButtonRole.DestructiveRole)
+        erase.setObjectName("danger")
+        confirmation.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        confirmation.exec()
+        if confirmation.clickedButton() == erase:
             self.run_job("Clear notebook memory", self.service.clear_device)
 
     def log(self, message: str) -> None:

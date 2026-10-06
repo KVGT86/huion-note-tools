@@ -40,6 +40,15 @@ def test_qt_shell_builds_and_routes(tmp_path):
         CollisionResolver(str(tmp_path)),
     )
     window = HuionNoteWindow(pipeline, FakeBridge())
+    assert app.style().objectName() == "fusion"
+    assert window.no_selection.isHidden() is False
+    assert window.filter.accessibleName() == "Filter pages by transcript status"
+    window.filter.showPopup()
+    app.processEvents()
+    assert window.filter.view().sizeHintForRow(0) >= 32
+    window.filter.hidePopup()
+    from PySide6.QtGui import QPalette
+    assert window.search.palette().color(QPalette.ColorRole.PlaceholderText).name() == "#625f59"
 
     assert window.pages.count() == 2
     assert window.pages.currentIndex() == 0
@@ -67,10 +76,23 @@ def test_qt_shell_builds_and_routes(tmp_path):
     from PySide6.QtCore import Qt
     window.resize(860, 580)
     window._show_page(0)
+    window.note_list.setCurrentRow(0)
+    assert window.no_selection.isHidden()
     window.detail_tabs.setCurrentIndex(2)
+    window.show()
     app.processEvents()
     window.adapt_review()
     assert window.review_splitter.orientation() == Qt.Orientation.Vertical
+    window.filter.setCurrentIndex(2)
+    assert window.note_list.count() == 0
+    assert window.no_selection.isHidden() is False
+    assert not window.save_transcript_button.isEnabled()
+    window.filter.setCurrentIndex(0)
+    window.note_list.setCurrentRow(0)
+    window.editor.setPlainText("Reviewed transcript")
+    assert window.save_transcript_button.isEnabled()
+    assert window.save_transcript()
+    assert not window.save_transcript_button.isEnabled()
     window.close()
     app.processEvents()
     import json
