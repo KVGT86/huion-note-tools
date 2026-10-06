@@ -97,16 +97,22 @@ Six-pixel control corners and rectangular paper. Qt Fusion supplies consistent n
 
 ## Components
 ### Navigation
-Notes is the opening workspace; Live notebook is the second destination. Settings and Activity stay near the sidebar foot.
+Notes is the opening workspace; Live notebook is the second destination. Icon-led Settings and Activity utilities stay near the sidebar foot. Version information belongs in Settings, not the navigation shell.
 
 ### Document workspace
 Search, status filtering and multiselection sit above a document list. Selected handwriting renders as vectors. Transcript reading and editing use underlined active tabs. A cleared selection shows an explicit empty preview instead of the previous page. Batch export and transcription remain contextual.
 
 ### Live notebook
-Plain, ruled or dotted paper; fit page, fit width, zoom and pan. Pressure changes locally along smooth stroke outlines. Completed geometry is cached. Single-point marks remain visible.
+One toolbar groups page navigation and paper guides on the left, save/new-page icons and Present on the right. Plain, ruled or dotted paper; fit page, fit width, zoom and pan. Pressure changes locally along smooth stroke outlines. Completed geometry is cached. Single-point marks remain visible.
+
+### Status footer
+A full-width, hairline-separated Qt status bar anchors the shell. Bluetooth state and reconnect sit on the left; operation results occupy the flexible middle. Live draft state, fit and zoom controls sit on the right. Persistent instructions move into tooltips; draft state reports only what has actually happened. Saved-page browsing is distinguished from the active draft.
+
+### Icons
+One authored 24-unit outline family with 1.7-unit strokes, rendered at 18px for 1×–3× scaling. Tool buttons have at least 32px targets, named tooltips, accessible names and visible keyboard focus. Icon-only controls cover familiar view and document operations; Present, Activity and Settings keep their text labels.
 
 ### Presentation
-F11 hides navigation, controls, activity and device identity. Escape restores the normal workspace. Connection changes never erase the page.
+F11 hides navigation, controls, activity and the entire status footer, including device identity. Escape restores the normal workspace. Connection changes never erase the page.
 
 ### Controls and feedback
 One graphite primary button leads sync. Secondary actions have visible control boundaries; navigation utilities remain quiet. Dropdowns use authored vector chevrons and styled list popups with 40px rows, not platform-default menu delegates. Checkboxes, radio choices, menus and scrollbars share the palette. Keyboard focus remains visible. Long operations show progress and clear results; failures explain recovery.

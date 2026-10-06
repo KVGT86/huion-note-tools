@@ -12,14 +12,14 @@ if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY"):
     os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, QUrl, QSize
-from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QIcon, QShortcut, QKeySequence, QDesktopServices, QPalette, QFont
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QIcon, QShortcut, QKeySequence, QDesktopServices, QPalette, QFont, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QStackedWidget, QSplitter, QListWidget, QListWidgetItem,
     QAbstractItemView, QLineEdit, QComboBox, QTextEdit, QTextBrowser, QTabWidget,
     QDialog, QDialogButtonBox, QFormLayout, QFileDialog, QMessageBox, QCheckBox,
-    QProgressBar, QMenu, QSizePolicy, QStyledItemDelegate, QRadioButton, QListView,
+    QProgressBar, QMenu, QSizePolicy, QStyledItemDelegate, QRadioButton, QListView, QToolButton, QStatusBar,
 )
 
 from huion.ink import PAGE_WIDTH, PAGE_HEIGHT, outline, svg_document
@@ -37,6 +37,15 @@ QDialog { background: #FFFFFF; }
 QWidget#sidebar, QWidget#paperWell { background: #F2F1ED; }
 QWidget#sidebar { border-right: 1px solid #D6D3CC; }
 QFrame#topbar { border-bottom: 1px solid #D6D3CC; background: #FFFFFF; }
+QStatusBar { background: #F2F1ED; border-top: 1px solid #D6D3CC; padding: 4px 10px; }
+QStatusBar::item { border: 0; }
+QToolButton { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 6px; }
+QToolButton:hover { background: #E4E1DA; }
+QToolButton:pressed, QToolButton:checked { background: #E4DEF0; border-color: #B8B3AA; }
+QToolButton:focus { border-color: #786995; }
+QToolButton#utility { text-align: left; padding: 9px 10px; }
+QFrame#toolDivider { background: #D6D3CC; max-width: 1px; }
+QComboBox#paperChoice { min-width: 64px; }
 QLabel#title { font-size: 21px; font-weight: 600; }
 QLabel#brand { font-size: 17px; font-weight: 600; }
 QLabel#muted { color: #625F59; font-size: 13px; }
@@ -117,6 +126,61 @@ def combo_box(items: list[str], name: str) -> QComboBox:
     widget.setView(QListView())
     widget.addItems(items)
     widget.setAccessibleName(name)
+    return widget
+
+
+# One authored outline family, rendered for 1x–3x desktop scaling.
+ICON_PATHS = {
+    "save": "M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2ZM7 3v6h10V3M7 21v-8h10v8",
+    "new": "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6ZM14 2v6h6M12 12v6M9 15h6",
+    "present": "M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5",
+    "fit-page": "M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5M8 7h8v10H8Z",
+    "fit-width": "M3 5v14M21 5v14M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3",
+    "minus": "M5 12h14",
+    "plus": "M5 12h14M12 5v14",
+    "previous": "m15 6-6 6 6 6",
+    "next": "m9 6 6 6-6 6",
+    "reconnect": "M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 2l1 4M4 12l1 4a8 8 0 0 0 13 2",
+    "activity": "M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1",
+    "settings": "M4 7h16M4 17h16M9 4v6M15 14v6",
+    "bluetooth": "M7 7l10 10-5 4V3l5 4L7 17",
+}
+
+
+def ui_icon(name: str) -> QIcon:
+    svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="{ICON_PATHS[name]}" fill="none" stroke="{INK}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    renderer = QSvgRenderer(svg.encode())
+    icon = QIcon()
+    for scale in (1, 2, 3):
+        pixmap = QPixmap(18 * scale, 18 * scale)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        pixmap.setDevicePixelRatio(scale)
+        icon.addPixmap(pixmap)
+    return icon
+
+
+def tool_button(icon: str, name: str, callback: Any, text: str = "") -> QToolButton:
+    widget = QToolButton()
+    widget.setIcon(ui_icon(icon))
+    widget.setIconSize(QSize(18, 18))
+    widget.setAccessibleName(name)
+    widget.setToolTip(name)
+    widget.setCursor(Qt.CursorShape.PointingHandCursor)
+    widget.setMinimumSize(32, 32)
+    if text:
+        widget.setText(text)
+        widget.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+    widget.clicked.connect(callback)
+    return widget
+
+
+def tool_divider() -> QFrame:
+    widget = QFrame()
+    widget.setObjectName("toolDivider")
+    widget.setFixedSize(1, 20)
     return widget
 
 
@@ -312,19 +376,33 @@ class LiveCanvas(PaperView):
         painter.restore()
 
 
-def view_controls(view: PaperView) -> QWidget:
+def view_controls(view: PaperView, expand: bool = True) -> QWidget:
     host = QWidget()
     layout = QHBoxLayout(host)
     layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(2)
-    layout.addWidget(button("Fit page", lambda: view.reset_view("page")))
-    layout.addWidget(button("Fit width", lambda: view.reset_view("width")))
-    layout.addStretch()
-    layout.addWidget(button("Zoom out", lambda: view.change_zoom(1 / 1.2)))
+    layout.setSpacing(4)
+    page = tool_button("fit-page", "Fit entire page", lambda: view.reset_view("page"))
+    width = tool_button("fit-width", "Fit page width", lambda: view.reset_view("width"))
+    page.setCheckable(True)
+    width.setCheckable(True)
+    layout.addWidget(page)
+    layout.addWidget(width)
+    if expand:
+        layout.addStretch()
+    else:
+        layout.addWidget(tool_divider())
+    layout.addWidget(tool_button("minus", "Zoom out", lambda: view.change_zoom(1 / 1.2)))
     value = label("Fit page", "muted")
-    view.zoom_changed.connect(value.setText)
+    value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    value.setMinimumWidth(62)
+    def update(text: str) -> None:
+        value.setText(text)
+        page.setChecked(text == "Fit page")
+        width.setChecked(text == "Fit width")
+    view.zoom_changed.connect(update)
+    update("Fit page" if view.fit == "page" else "Fit width")
     layout.addWidget(value)
-    layout.addWidget(button("Zoom in", lambda: view.change_zoom(1.2)))
+    layout.addWidget(tool_button("plus", "Zoom in", lambda: view.change_zoom(1.2)))
     return host
 
 
@@ -338,6 +416,7 @@ class SettingsDialog(QDialog):
         form.setContentsMargins(24, 24, 24, 24)
         form.setVerticalSpacing(14)
         form.addRow(label("Settings", "title"))
+        form.addRow(label(f"HuionNote {__version__}", "muted"))
         self.output = QLineEdit(service.output_directory)
         self.mac = QLineEdit(service.mac_address)
         self.mac.setPlaceholderText("Leave blank to find your notebook automatically")
@@ -436,6 +515,7 @@ class HuionNoteWindow(QMainWindow):
         except Exception as exc:
             self.log(str(exc))
         self.service.start_stream()
+        self.update_live_controls()
         self.refresh_connection()
         self.load_library()
         self._show_page(0)
@@ -473,15 +553,13 @@ class HuionNoteWindow(QMainWindow):
             side.addWidget(item)
             self.nav.append(item)
         side.addStretch()
-        self.device_label = label("Connecting to notebook…", "muted")
-        self.device_label.setWordWrap(True)
-        self.device_label.setMinimumHeight(44)
-        side.addWidget(self.device_label)
-        side.addWidget(button("Reconnect", self.retry_connection, role="quiet"))
-        side.addSpacing(16)
-        side.addWidget(button("Activity log", lambda: self.activity.setVisible(not self.activity.isVisible()), role="quiet"))
-        side.addWidget(button("Settings", self.open_settings, role="quiet"))
-        side.addWidget(label(f"HuionNote {__version__}", "muted"))
+        self.activity_button = tool_button("activity", "Show activity log", self.toggle_activity, "Activity")
+        self.activity_button.setObjectName("utility")
+        self.activity_button.setCheckable(True)
+        side.addWidget(self.activity_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        settings_button = tool_button("settings", "Open settings", self.open_settings, "Settings")
+        settings_button.setObjectName("utility")
+        side.addWidget(settings_button, alignment=Qt.AlignmentFlag.AlignLeft)
         root.addWidget(self.sidebar)
         content = QWidget()
         column = QVBoxLayout(content)
@@ -494,7 +572,6 @@ class HuionNoteWindow(QMainWindow):
         self.page_title = label("Notes", "title")
         bar.addWidget(self.page_title)
         bar.addStretch()
-        self.top_status = label("Connecting", "muted")
         self.sync_button = button("Sync notebook", self.sync_now, True)
         bar.addWidget(self.sync_button)
         column.addWidget(self.topbar)
@@ -511,11 +588,32 @@ class HuionNoteWindow(QMainWindow):
         self.activity.setMaximumHeight(110)
         self.activity.hide()
         column.addWidget(self.activity)
-        self.footer = label("Sync to import saved pages. Originals stay on your notebook.", "muted")
-        self.footer.setContentsMargins(24, 8, 24, 8)
-        column.addWidget(self.footer)
         root.addWidget(content, 1)
         self.setCentralWidget(shell)
+        self.statusbar = QStatusBar()
+        self.statusbar.setSizeGripEnabled(False)
+        self.setStatusBar(self.statusbar)
+        connection = QWidget()
+        connection.setFixedWidth(180)
+        status_layout = QHBoxLayout(connection)
+        status_layout.setContentsMargins(2, 0, 8, 0)
+        status_layout.setSpacing(7)
+        bluetooth = QLabel()
+        bluetooth.setPixmap(ui_icon("bluetooth").pixmap(18, 18))
+        status_layout.addWidget(bluetooth)
+        self.device_label = label("Connecting…", "muted")
+        status_layout.addWidget(self.device_label, 1)
+        status_layout.addWidget(tool_button("reconnect", "Reconnect to notebook", self.retry_connection))
+        self.statusbar.addWidget(connection)
+        self.footer = label("Originals stay on your notebook.", "muted")
+        self.footer.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.statusbar.addWidget(self.footer, 1)
+        self.live_hint = label("Blank page", "muted")
+        self.live_hint.setMinimumWidth(100)
+        self.live_hint.setToolTip("The current draft is saved locally every 3 seconds. Save page adds it to Notes.")
+        self.statusbar.addPermanentWidget(self.live_hint)
+        self.live_view_controls = view_controls(self.canvas, expand=False)
+        self.statusbar.addPermanentWidget(self.live_view_controls)
 
     def library_page(self) -> QWidget:
         page = QWidget()
@@ -623,27 +721,29 @@ class HuionNoteWindow(QMainWindow):
         self.live_toolbar = QWidget()
         tools = QHBoxLayout(self.live_toolbar)
         tools.setContentsMargins(0, 0, 0, 0)
+        tools.setSpacing(8)
         self.live_position = label("Current page", "muted")
-        tools.addWidget(button("Previous", lambda: self.browse_live(-1)))
+        self.previous_page_button = tool_button("previous", "Previous saved page", lambda: self.browse_live(-1))
+        self.next_page_button = tool_button("next", "Next page", lambda: self.browse_live(1))
+        tools.addWidget(self.previous_page_button)
         tools.addWidget(self.live_position)
-        tools.addWidget(button("Next", lambda: self.browse_live(1)))
+        tools.addWidget(self.next_page_button)
+        tools.addWidget(tool_divider())
+        self.paper_choice = combo_box(["Plain", "Ruled", "Dotted"], "Paper guides")
+        self.paper_choice.setObjectName("paperChoice")
+        self.paper_choice.setToolTip("Paper guides are for viewing only; exported pages stay plain.")
+        self.paper_choice.currentTextChanged.connect(self.change_paper)
+        tools.addWidget(self.paper_choice)
         tools.addStretch()
-        tools.addWidget(button("Save page", self.save_live))
-        tools.addWidget(button("New page", self.new_page))
-        present = button("Present", self.toggle_presentation)
-        present.setToolTip("Show only the page for screen-sharing (F11). Press Escape to return.")
+        tools.addWidget(tool_button("save", "Save page to Notes (Ctrl+S)", self.save_live))
+        tools.addWidget(tool_button("new", "Save and start a new page (Ctrl+N)", self.new_page))
+        tools.addWidget(tool_divider())
+        present = tool_button("present", "Present page (F11). Press Escape to return.", self.toggle_presentation, "Present")
         tools.addWidget(present)
         layout.addWidget(self.live_toolbar)
         self.canvas = LiveCanvas()
-        self.live_view_controls = view_controls(self.canvas)
-        control_layout = self.live_view_controls.layout()
-        self.paper_choice = combo_box(["Plain", "Ruled", "Dotted"], "Paper guides")
-        self.paper_choice.currentTextChanged.connect(self.change_paper)
-        control_layout.insertWidget(0, self.paper_choice)
-        layout.addWidget(self.live_view_controls)
         layout.addWidget(self.canvas, 1)
-        self.live_hint = label("Autosaves every 3 seconds · Ctrl+scroll to zoom · Drag to pan", "muted")
-        layout.addWidget(self.live_hint)
+        self.canvas.setToolTip("Ctrl+scroll to zoom. Drag to pan.")
         return page
 
     def change_paper(self, style: str) -> None:
@@ -655,6 +755,13 @@ class HuionNoteWindow(QMainWindow):
         self.page_title.setText("Notes" if index == 0 else "Live notebook")
         for i, nav in enumerate(self.nav):
             nav.setChecked(i == index)
+        self.live_hint.setVisible(index == 1)
+        self.live_view_controls.setVisible(index == 1)
+        if not self._busy:
+            self.footer.setText("" if index == 1 else "Originals stay on your notebook.")
+
+    def toggle_activity(self) -> None:
+        self.activity.setVisible(self.activity_button.isChecked())
 
     def focus_search(self) -> None:
         self.leave_presentation()
@@ -664,14 +771,14 @@ class HuionNoteWindow(QMainWindow):
     def refresh_connection(self) -> None:
         snapshot = self.service.device_snapshot()
         if snapshot.connected is True:
-            self.top_status.setText("Connected")
-            self.device_label.setText("X10 connected" + (f" · {snapshot.battery}% battery" if snapshot.battery is not None else ""))
+            self.device_label.setText("X10" + (f" · {snapshot.battery}%" if snapshot.battery is not None else " connected"))
+            self.device_label.setToolTip("Notebook connected" + (f" · {snapshot.battery}% battery" if snapshot.battery is not None else ""))
         elif snapshot.connected is None:
-            self.top_status.setText("Connecting")
-            self.device_label.setText("Connecting to X10…\nTouch the paper with your pen.")
+            self.device_label.setText("Connecting…")
+            self.device_label.setToolTip("Connecting to X10. Touch the paper with your pen to wake it.")
         else:
-            self.top_status.setText("Offline")
-            self.device_label.setText("X10 disconnected\nSaved pages remain available.")
+            self.device_label.setText("X10 offline")
+            self.device_label.setToolTip("Notebook disconnected. Saved pages remain available; use Reconnect to try again.")
 
     def retry_connection(self) -> None:
         if not self._busy:
@@ -995,10 +1102,23 @@ class HuionNoteWindow(QMainWindow):
             self._history_index = len(self._live_history)
             self.canvas.set_samples(self._current_live)
             self.live_position.setText("Current page")
+            self.update_live_controls()
         self.canvas.add_point(point)
 
     def live_changed(self) -> None:
         self._draft_dirty = True
+        self.update_live_controls()
+
+    def update_live_controls(self) -> None:
+        self.previous_page_button.setEnabled(self._history_index > 0)
+        self.next_page_button.setEnabled(self._history_index < len(self._live_history))
+        if self._history_index < len(self._live_history):
+            text = "Saved page"
+        elif self._draft_dirty:
+            text = "Unsaved changes"
+        else:
+            text = "Draft saved" if self.canvas.samples() else "Blank page"
+        self.live_hint.setText(text)
 
     def save_draft(self) -> bool:
         if self._history_index < len(self._live_history):
@@ -1008,8 +1128,10 @@ class HuionNoteWindow(QMainWindow):
         try:
             self.service.save_live_draft(self.canvas.samples())
             self._draft_dirty = False
+            self.update_live_controls()
             return True
         except Exception as exc:
+            self.live_hint.setText("Draft not saved")
             self.log(f"Live page could not be saved: {exc}. Export or check the notes folder.")
             return False
 
@@ -1023,6 +1145,7 @@ class HuionNoteWindow(QMainWindow):
         try:
             self._last_live_path = self.service.save_live_page(self.canvas.samples())
             self._draft_dirty = False
+            self.update_live_controls()
             self.log("Live page saved to Notes.")
             self.load_library()
             return True
@@ -1048,6 +1171,7 @@ class HuionNoteWindow(QMainWindow):
         self._current_live = []
         self._draft_dirty = False
         self.live_position.setText("Current page")
+        self.update_live_controls()
         self.canvas.reset_view()
 
     def browse_live(self, direction: int) -> None:
@@ -1061,6 +1185,7 @@ class HuionNoteWindow(QMainWindow):
         self._history_index = target
         self.canvas.set_samples(self._current_live if target == len(self._live_history) else self._live_history[target])
         self.live_position.setText("Current page" if target == len(self._live_history) else f"Saved page {target + 1}")
+        self.update_live_controls()
         self.canvas.reset_view()
 
     def toggle_presentation(self) -> None:
@@ -1070,7 +1195,7 @@ class HuionNoteWindow(QMainWindow):
         self._show_page(1)
         self._was_maximized = self.isMaximized()
         self._presentation = True
-        for widget in (self.sidebar, self.topbar, self.live_toolbar, self.live_view_controls, self.live_hint, self.footer, self.activity, self.progress):
+        for widget in (self.sidebar, self.topbar, self.live_toolbar, self.statusbar, self.activity, self.progress):
             widget.hide()
         self.showFullScreen()
         self.canvas.reset_view()
@@ -1079,8 +1204,9 @@ class HuionNoteWindow(QMainWindow):
         if not self._presentation:
             return
         self._presentation = False
-        for widget in (self.sidebar, self.topbar, self.live_toolbar, self.live_view_controls, self.live_hint, self.footer):
+        for widget in (self.sidebar, self.topbar, self.live_toolbar, self.statusbar):
             widget.show()
+        self.activity.setVisible(self.activity_button.isChecked())
         if self._busy:
             self.progress.show()
         self.showMaximized() if self._was_maximized else self.showNormal()
@@ -1121,6 +1247,7 @@ class HuionNoteWindow(QMainWindow):
     def log(self, message: str) -> None:
         self.activity.append(message)
         self.footer.setText(message)
+        self.footer.setToolTip(message)
 
     def closeEvent(self, event: Any) -> None:
         if self._busy:

@@ -2,6 +2,18 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.1.2] — 2026-10-06
+
+### Changed
+- Unified live toolbar with outlined icons for page navigation, saving, new pages and presentation.
+- Fit and zoom controls moved into a full-width status footer alongside connection and draft state.
+- Compact icon-led Activity and Settings utilities; version information moved into Settings.
+- Keyboard-accessible icons with named tooltips and high-DPI rendering.
+
+### Fixed
+- Footer draft state reflects unsaved changes, successful saves, failures and saved-page browsing.
+- Unavailable page navigation is disabled; presentation hides the whole footer.
+
 ## [1.1.1] — 2026-10-06
 
 ### Changed

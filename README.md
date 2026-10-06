@@ -19,11 +19,13 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 
 The Tkinter annotation editor and tray implementation remain in the repository as legacy tools; they are not features of the default Qt workspace.
 
-## Desktop 1.1.1
+## Desktop 1.1.2
 
 Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Edit transcript. Ctrl/Shift-click selects multiple pages. Export and Transcribe operate on that selection.
 
 Dropdown menus, dialogs and selection states share a consistent Qt theme. The updated transparent logo appears in the app and desktop launcher.
+
+The live toolbar groups page navigation, paper guides and icon-led save/new-page actions. Fit and zoom controls live in the status footer with connection and draft state. Hover or focus controls for their action names; shortcuts remain available.
 
 Open **Live notebook** when sharing your writing. Save page adds the current page to Notes; New page saves it before starting a fresh page. The X10 page button uses the same save-and-advance action. Previous/Next browse this session; earlier saved sessions remain in Notes. A draft is saved every three seconds and restored on restart. Disconnects leave the page visible.
 
