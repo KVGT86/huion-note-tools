@@ -11,6 +11,11 @@ import threading
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+# Qt 6.11 currently crashes rendering this window through Zorin's Wayland
+# compositor. XWayland is stable and still preserves native desktop behavior.
+if sys.platform.startswith("linux"):
+    os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
@@ -57,27 +62,27 @@ RED = "#B43D35"
 
 
 STYLE = f"""
-* {{ font-family: 'Aptos', 'Noto Sans', sans-serif; font-size: 13px; color: {INK}; }}
+* {{ font-size: 13px; color: {INK}; }}
 QMainWindow, QWidget#content {{ background: {PAPER}; }}
 QWidget#sidebar, QWidget#page {{ background: {WARM}; }}
 QFrame#topbar {{ background: {PAPER}; border-bottom: 1px solid {LINE}; }}
-QLabel#brand {{ font-size: 16px; font-weight: 650; }}
+QLabel#brand {{ font-size: 16px; font-weight: 600; }}
 QLabel#subtle, QLabel#meta {{ color: {MUTED}; }}
-QLabel#section {{ color: {FAINT}; font-size: 10px; font-weight: 650; letter-spacing: 1px; }}
-QLabel#title {{ font-size: 20px; font-weight: 650; }}
-QLabel#emptyTitle {{ font-size: 17px; font-weight: 650; }}
+QLabel#section {{ color: {FAINT}; font-size: 10px; font-weight: 600; }}
+QLabel#title {{ font-size: 20px; font-weight: 600; }}
+QLabel#emptyTitle {{ font-size: 17px; font-weight: 600; }}
 QPushButton {{
     background: transparent; border: 0; border-radius: 7px; padding: 8px 10px;
     text-align: left;
 }}
 QPushButton:hover {{ background: {HOVER}; }}
-QPushButton:focus {{ outline: none; border: 1px solid #9C9A94; }}
-QPushButton:checked {{ background: #E8E6E1; font-weight: 650; }}
+QPushButton:focus {{ border: 1px solid #9C9A94; }}
+QPushButton:checked {{ background: #E8E6E1; font-weight: 600; }}
 QPushButton#primary {{ background: {INK}; color: white; padding: 8px 14px; text-align: center; }}
 QPushButton#primary:hover {{ background: #11100E; }}
 QPushButton#quiet {{ color: {MUTED}; }}
 QPushButton#danger {{ color: {RED}; }}
-QLabel#status {{ border-radius: 10px; padding: 4px 9px; font-size: 11px; font-weight: 650; }}
+QLabel#status {{ border-radius: 10px; padding: 4px 9px; font-size: 11px; font-weight: 600; }}
 QFrame#noteRow {{ background: {PAPER}; border-bottom: 1px solid {LINE}; }}
 QFrame#noteRow:hover {{ background: #FBFAF8; }}
 QListWidget {{ background: {PAPER}; border: 1px solid {LINE}; border-radius: 10px; padding: 4px; }}

@@ -64,6 +64,12 @@ huion-notes/
    ```bash
    ./install.sh
    ```
+
+   On Wayland desktops, Qt also requires the system XWayland cursor runtime:
+
+   ```bash
+   sudo apt install libxcb-cursor0
+   ```
    This will:
    * Create and configure the `.venv` virtual environment.
    * Install all required dependencies.

@@ -66,7 +66,7 @@ Type=Application
 Name=HuionNote
 GenericName=Digital Notebook Companion
 Comment=Huion Note X10 Companion & Digital Notebook
-Exec=$VENV_DIR/bin/python3 $SCRIPT_DIR/start_app.py
+Exec=env QT_QPA_PLATFORM=xcb $VENV_DIR/bin/python3 $SCRIPT_DIR/start_app.py
 Icon=$ICON_DEST_DIR/huionnote.png
 Terminal=false
 Categories=Utility;Graphics;Office;
