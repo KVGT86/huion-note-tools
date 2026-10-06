@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-06T09:58:47+01:00",
+  "title": "Design System: HuionNote",
+  "extensions": {
+    "colorMeta": {
+      "graphite-ink": { "role": "primary", "displayName": "Graphite Ink", "canonical": "#25231F", "tonalRamp": ["oklch(15% 0.008 75)", "oklch(25% 0.008 75)", "oklch(37% 0.008 75)", "oklch(50% 0.008 75)", "oklch(63% 0.008 75)", "oklch(75% 0.008 75)", "oklch(86% 0.008 75)", "oklch(95% 0.008 75)"] },
+      "graphite-muted": { "role": "neutral", "displayName": "Graphite Muted", "canonical": "#625F59", "tonalRamp": ["oklch(15% 0.008 75)", "oklch(25% 0.008 75)", "oklch(37% 0.008 75)", "oklch(50% 0.008 75)", "oklch(63% 0.008 75)", "oklch(75% 0.008 75)", "oklch(86% 0.008 75)", "oklch(95% 0.008 75)"] },
+      "graphite-faint": { "role": "neutral", "displayName": "Graphite Faint", "canonical": "#706D67", "tonalRamp": ["oklch(15% 0.008 75)", "oklch(25% 0.008 75)", "oklch(37% 0.008 75)", "oklch(50% 0.008 75)", "oklch(63% 0.008 75)", "oklch(75% 0.008 75)", "oklch(86% 0.008 75)", "oklch(95% 0.008 75)"] },
+      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#FFFFFF", "tonalRamp": ["oklch(15% 0.004 75)", "oklch(25% 0.004 75)", "oklch(37% 0.004 75)", "oklch(50% 0.004 75)", "oklch(63% 0.004 75)", "oklch(75% 0.004 75)", "oklch(86% 0.004 75)", "oklch(95% 0.004 75)"] },
+      "warm-paper": { "role": "neutral", "displayName": "Warm Paper", "canonical": "#F7F6F3", "tonalRamp": ["oklch(15% 0.008 75)", "oklch(25% 0.008 75)", "oklch(37% 0.008 75)", "oklch(50% 0.008 75)", "oklch(63% 0.008 75)", "oklch(75% 0.008 75)", "oklch(86% 0.008 75)", "oklch(95% 0.008 75)"] },
+      "hover-wash": { "role": "neutral", "displayName": "Hover Wash", "canonical": "#EEEDE8", "tonalRamp": ["oklch(15% 0.008 75)", "oklch(25% 0.008 75)", "oklch(37% 0.008 75)", "oklch(50% 0.008 75)", "oklch(63% 0.008 75)", "oklch(75% 0.008 75)", "oklch(86% 0.008 75)", "oklch(95% 0.008 75)"] },
+      "hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "#E3E1DC", "tonalRamp": ["oklch(15% 0.008 75)", "oklch(25% 0.008 75)", "oklch(37% 0.008 75)", "oklch(50% 0.008 75)", "oklch(63% 0.008 75)", "oklch(75% 0.008 75)", "oklch(86% 0.008 75)", "oklch(95% 0.008 75)"] },
+      "focus-ring": { "role": "neutral", "displayName": "Focus Ring", "canonical": "#9C9A94", "tonalRamp": ["oklch(15% 0.008 75)", "oklch(25% 0.008 75)", "oklch(37% 0.008 75)", "oklch(50% 0.008 75)", "oklch(63% 0.008 75)", "oklch(75% 0.008 75)", "oklch(86% 0.008 75)", "oklch(95% 0.008 75)"] },
+      "selected-wash": { "role": "neutral", "displayName": "Selected Wash", "canonical": "#E8E6E1", "tonalRamp": ["oklch(15% 0.008 75)", "oklch(25% 0.008 75)", "oklch(37% 0.008 75)", "oklch(50% 0.008 75)", "oklch(63% 0.008 75)", "oklch(75% 0.008 75)", "oklch(86% 0.008 75)", "oklch(95% 0.008 75)"] },
+      "state-success": { "role": "secondary", "displayName": "Connected Green", "canonical": "#23683A", "tonalRamp": ["oklch(15% 0.08 145)", "oklch(25% 0.08 145)", "oklch(37% 0.08 145)", "oklch(50% 0.08 145)", "oklch(63% 0.08 145)", "oklch(75% 0.08 145)", "oklch(86% 0.08 145)", "oklch(95% 0.08 145)"] },
+      "state-warning": { "role": "secondary", "displayName": "Working Amber", "canonical": "#7D480C", "tonalRamp": ["oklch(15% 0.09 60)", "oklch(25% 0.09 60)", "oklch(37% 0.09 60)", "oklch(50% 0.09 60)", "oklch(63% 0.09 60)", "oklch(75% 0.09 60)", "oklch(86% 0.09 60)", "oklch(95% 0.09 60)"] },
+      "state-danger": { "role": "secondary", "displayName": "Failure Red", "canonical": "#B43D35", "tonalRamp": ["oklch(15% 0.1 25)", "oklch(25% 0.1 25)", "oklch(37% 0.1 25)", "oklch(50% 0.1 25)", "oklch(63% 0.1 25)", "oklch(75% 0.1 25)", "oklch(86% 0.1 25)", "oklch(95% 0.1 25)"] },
+      "success-wash": { "role": "secondary", "displayName": "Success Wash", "canonical": "#E8F3EB", "tonalRamp": ["oklch(15% 0.03 145)", "oklch(25% 0.03 145)", "oklch(37% 0.03 145)", "oklch(50% 0.03 145)", "oklch(63% 0.03 145)", "oklch(75% 0.03 145)", "oklch(86% 0.03 145)", "oklch(95% 0.03 145)"] },
+      "warning-wash": { "role": "secondary", "displayName": "Warning Wash", "canonical": "#FFF3DF", "tonalRamp": ["oklch(15% 0.03 60)", "oklch(25% 0.03 60)", "oklch(37% 0.03 60)", "oklch(50% 0.03 60)", "oklch(63% 0.03 60)", "oklch(75% 0.03 60)", "oklch(86% 0.03 60)", "oklch(95% 0.03 60)"] },
+      "danger-wash": { "role": "secondary", "displayName": "Danger Wash", "canonical": "#FBE9E7", "tonalRamp": ["oklch(15% 0.03 25)", "oklch(25% 0.03 25)", "oklch(37% 0.03 25)", "oklch(50% 0.03 25)", "oklch(63% 0.03 25)", "oklch(75% 0.03 25)", "oklch(86% 0.03 25)", "oklch(95% 0.03 25)"] }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Workspace Title", "purpose": "Names the active workspace in the top bar." },
+      "brand": { "displayName": "Product Brand", "purpose": "Identifies HuionNote at the top of the sidebar." },
+      "body": { "displayName": "Interface Body", "purpose": "Controls, note titles, fields, and general interface copy." },
+      "status": { "displayName": "Status Label", "purpose": "Compact device and note-state labels." },
+      "section-label": { "displayName": "Section Label", "purpose": "Uppercase sidebar grouping labels only." }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      { "name": "minimum-window", "value": "900x600px" },
+      { "name": "default-window", "value": "1180x760px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single filled action for the immediate workspace task.",
+      "html": "<button class=\"ds-btn-primary\">Sync now</button>",
+      "css": ".ds-btn-primary { background:#25231F; color:#FFFFFF; border:0; border-radius:7px; padding:8px 14px; font:650 13px Aptos, 'Noto Sans', sans-serif; } .ds-btn-primary:hover { background:#11100E; } .ds-btn-primary:focus-visible { outline:1px solid #9C9A94; outline-offset:2px; }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "A low-emphasis action that recedes until hover or focus.",
+      "html": "<button class=\"ds-btn-quiet\">Clear canvas</button>",
+      "css": ".ds-btn-quiet { background:transparent; color:#625F59; border:0; border-radius:7px; padding:8px 10px; font:400 13px Aptos, 'Noto Sans', sans-serif; } .ds-btn-quiet:hover { background:#EEEDE8; } .ds-btn-quiet:focus-visible { outline:1px solid #9C9A94; outline-offset:1px; }"
+    },
+    {
+      "name": "Active Navigation Item",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "The selected workspace destination in the fixed sidebar.",
+      "html": "<button class=\"ds-nav-active\">Live canvas</button>",
+      "css": ".ds-nav-active { width:200px; background:#E8E6E1; color:#25231F; border:0; border-radius:7px; padding:8px 10px; text-align:left; font:650 13px Aptos, 'Noto Sans', sans-serif; } .ds-nav-active:hover { background:#EEEDE8; } .ds-nav-active:focus-visible { outline:1px solid #9C9A94; outline-offset:1px; }"
+    },
+    {
+      "name": "Connected Status",
+      "kind": "chip",
+      "refersTo": "status-connected",
+      "description": "A compact operational state label for a connected device.",
+      "html": "<span class=\"ds-status-connected\">●&nbsp;&nbsp;Connected · 82%</span>",
+      "css": ".ds-status-connected { display:inline-block; background:#E8F3EB; color:#23683A; border-radius:10px; padding:4px 9px; font:650 11px Aptos, 'Noto Sans', sans-serif; }"
+    },
+    {
+      "name": "Note Row",
+      "kind": "custom",
+      "description": "A full-width library row with title, metadata, state, and quiet actions.",
+      "html": "<div class=\"ds-note-row\"><div class=\"ds-note-copy\"><strong>Workshop notes</strong><small>06 Oct 2026 · 09:42</small></div><span class=\"ds-note-status\">Converted</span><button>View</button><button>Edit</button></div>",
+      "css": ".ds-note-row { display:flex; align-items:center; gap:8px; background:#FFFFFF; color:#25231F; border-bottom:1px solid #E3E1DC; padding:12px 16px; font:400 13px Aptos, 'Noto Sans', sans-serif; } .ds-note-row:hover { background:#FBFAF8; } .ds-note-copy { display:grid; gap:4px; flex:1; } .ds-note-copy small { color:#625F59; } .ds-note-status { background:#E8F3EB; color:#23683A; border-radius:10px; padding:4px 9px; font-size:11px; font-weight:650; } .ds-note-row button { background:transparent; color:#25231F; border:0; border-radius:7px; padding:8px 10px; } .ds-note-row button:hover { background:#EEEDE8; } .ds-note-row button:focus-visible { outline:1px solid #9C9A94; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "description": "A native settings field with a white paper fill and warm border.",
+      "html": "<input class=\"ds-input\" value=\"~/HuionNotes\" aria-label=\"Notes folder\">",
+      "css": ".ds-input { width:320px; background:#FFFFFF; color:#25231F; border:1px solid #D3D1CB; border-radius:7px; padding:8px; font:400 13px Aptos, 'Noto Sans', sans-serif; } .ds-input:focus-visible { outline:1px solid #9C9A94; outline-offset:1px; }"
+    },
+    {
+      "name": "A5 Live Canvas",
+      "kind": "custom",
+      "description": "The focal A5 page centred in its warm work area.",
+      "html": "<div class=\"ds-canvas-well\"><div class=\"ds-a5-page\"><svg viewBox=\"0 0 148 210\" aria-label=\"Live ink preview\"><path d=\"M35 54 C48 40, 58 72, 72 55 S100 48, 111 72\"/></svg></div></div>",
+      "css": ".ds-canvas-well { display:grid; place-items:center; width:420px; min-height:520px; padding:28px; background:#F7F6F3; } .ds-a5-page { width:296px; aspect-ratio:148/210; background-color:#FFFFFF; background-image:radial-gradient(#D4D1CA 1px, transparent 1px); background-size:24px 24px; border:1px solid #D3D1CB; } .ds-a5-page svg { width:100%; height:100%; } .ds-a5-page path { fill:none; stroke:#25231F; stroke-width:1.2; stroke-linecap:round; stroke-linejoin:round; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Notion for Huion",
+    "overview": "HuionNote is a quiet, native Operate surface built from warm paper, graphite ink, and precise hairlines. It should feel like opening a dependable notebook workspace: familiar enough to disappear during use, but unmistakably tied to handwriting through its A5 page, dot grid, and pressure-sensitive ink. The live A5 canvas is the visual and functional centre of gravity. Navigation and controls recede into a fixed, quiet sidebar and a slim top bar; document management remains a dense list rather than becoming a card dashboard. Colour communicates device state, note state, or destructive risk only. The PySide6 layer renders state and forwards user intent. HuionApplication remains the owner of hardware, sync, settings, note discovery, storage, and conversion workflows; visual extensions must preserve this boundary.",
+    "keyCharacteristics": [
+      "Warm off-white workspace with crisp white paper surfaces.",
+      "Graphite-first type, controls, and live ink.",
+      "A5 canvas as the largest and most visually important object.",
+      "Fixed 224px sidebar with compact, left-aligned native controls.",
+      "Hairline separators and tonal washes instead of card chrome or decorative elevation.",
+      "Semantic green, amber, and red reserved for operational state and risk."
+    ],
+    "rules": [
+      { "name": "The Semantic Colour Rule", "body": "Green, amber, and red communicate device state, note state, or destructive risk; they are never decorative accents.", "section": "colors" },
+      { "name": "The Paper Before Paint Rule", "body": "Extend the neutral paper-and-graphite scale before introducing any new hue.", "section": "colors" },
+      { "name": "The Native Clarity Rule", "body": "Use type to establish scan order, never to simulate editorial drama inside the operating surface.", "section": "typography" },
+      { "name": "The Canvas Priority Rule", "body": "When space tightens, controls stay compact and the canvas keeps the largest available region; never reduce it to a dashboard tile.", "section": "layout" },
+      { "name": "The Hairline, Not Shadow Rule", "body": "Separate stable regions with a tonal change or a 1px line; reserve overlays for native dialogs instead of lifting routine content into cards.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep the A5 page as the focal point of the live workspace.",
+      "Do use warm neutrals, 1px separators, and compact native controls to establish hierarchy.",
+      "Do reserve green, amber, and red for real state or risk.",
+      "Do keep PySide6 responsible for rendering and intent forwarding while HuionApplication owns operational workflows.",
+      "Do show destructive device clearing only in the relevant library context and retain native confirmation."
+    ],
+    "donts": [
+      "Don't turn the product into a card dashboard, analytics grid, or collection of floating panels.",
+      "Don't use semantic colours as branding, navigation accents, or decoration.",
+      "Don't add decorative shadows, gradients, oversized radii, or glass effects.",
+      "Don't move Bluetooth, sync, settings, note discovery, storage, or conversion logic into GUI widgets.",
+      "Don't introduce a second typeface or icon system unless a concrete workflow cannot be expressed with the native control vocabulary."
+    ]
+  }
+}

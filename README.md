@@ -15,7 +15,7 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 * **Markdown Reader**: Preview transcribed Markdown directly inside the app with Obsidian-compatible YAML frontmatter and one-click "Open in Default Editor".
 * **Persistent Document Library**: Scans and indexes all existing notes across `~/HuionNotes` and offline storage locations.
 * **System Tray Indicator**: Minimalist system tray pen icon with live connection dot (blue = connected, yellow = connecting, red = disconnected) and battery percentage.
-* **Customizable Interface**: Clean Notion / Apple-inspired light mode UI with togglable activity log console in the Settings menu.
+* **PySide6 Desktop Interface**: A quiet, Notion-inspired workspace with native Qt controls, live connection state, and an optional activity log.
 
 ---
 
@@ -36,8 +36,9 @@ huion-notes/
 │       ├── pipeline.py          # State machine & offline sync coordinator
 │       ├── store.py             # SVG, JSON, and Markdown storage managers
 │       └── gui/
-│           ├── app.py           # Main application window & UI lifecycle
-│           ├── components.py    # UI components, modals, and settings dialog
+│           ├── qt_app.py        # PySide6 shell; default desktop interface
+│           ├── app.py           # Legacy Tkinter shell during migration
+│           ├── components.py    # Legacy Tkinter components
 │           └── tray.py          # System tray indicator & background menu
 ├── assets/
 │   ├── huionnote.png            # Application & system tray icon art

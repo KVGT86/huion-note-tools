@@ -38,5 +38,7 @@ HuionNotes/
 .DS_Store
 .vscode/
 .idea/
+.impeccable/*
+!.impeccable/design.json
 *.swp
 *~

@@ -11,15 +11,15 @@ sys.path.insert(0, str(REPO_DIR / "src"))
 from huion_note_pipeline.pipeline import SyncPipeline, NoteRegistry
 from huion_note_pipeline.config import PipelineConfig
 from huion_note_pipeline.store import SvgStore, JsonStore, MarkdownStore, CollisionResolver
-from huion_note_pipeline.gui.app import HuionNotePipelineApp
+from huion_note_pipeline.gui.qt_app import HuionNoteWindow
 from huion_note_pipeline.ble_bridge import DeviceBridge
 
 
 def main() -> None:
-    # 1. Output directory: CYC-Caleb Obsidian Raw PNGs inbox
+    # 1. Output directory: shared SVG/JSON/Markdown note library
     default_notes_dir = os.environ.get(
         "HUION_NOTES_DIR",
-        str(Path.home() / "Documents" / "CYC-Caleb" / "00 Inbox" / "Raw PNGs")
+        str(Path.home() / "HuionNotes")
     )
     os.makedirs(default_notes_dir, exist_ok=True)
 
@@ -47,14 +47,8 @@ def main() -> None:
     bridge = DeviceBridge()
     bridge.attach_pipeline(pipeline)
 
-    # 6. Start BLE Telemetry Engine
-    mac_addr = "25:6C:BB:8D:19:50"
-    print(f"[BLE] Starting Tablet Inking telemetry engine for {mac_addr}...")
-    bridge.stream_pen_input(mac_addr, mode="tablet")
-
-    # 7. Launch the GUI
-    app = HuionNotePipelineApp(pipeline=pipeline, bridge=bridge)
-    app.run()
+    # 6. Launch the GUI; the application service resolves and starts the device.
+    HuionNoteWindow.run(pipeline=pipeline, bridge=bridge)
 
 
 if __name__ == "__main__":
