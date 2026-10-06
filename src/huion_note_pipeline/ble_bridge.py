@@ -118,6 +118,7 @@ class DeviceBridge:
         self._is_connected: bool = False
         self._last_battery: Optional[int] = None  # cached battery %
         self._sync_queue: Optional[asyncio.Queue] = None
+        self.last_storage_sync: Optional[tuple[str, int]] = None
 
     def get_battery(self) -> Optional[int]:
         """Return the last known battery percentage (0-100), or None if unknown."""
@@ -186,6 +187,7 @@ class DeviceBridge:
     def sync_offline_pages(self, output_dir: str, mac: str = "25:6C:BB:8D:19:50", delete_after_export: bool = False,
                            force_vectors: bool = False, progress=None) -> List[Any]:
         """Synchronizes offline notes over the existing active Bluetooth connection without disconnecting."""
+        self.last_storage_sync = None
         if self._current_loop and self._is_connected and self._current_conn and self._current_loop.is_running():
             fut = asyncio.run_coroutine_threadsafe(
                 self._async_sync_active_conn(output_dir, delete_after_export, force_vectors, progress),
@@ -198,7 +200,10 @@ class DeviceBridge:
                 raise TimeoutError("Notebook sync timed out. Already saved pages are kept; reconnect and try again.") from exc
         else:
             sync_mgr = OfflineSyncManager(mac=mac, output_dir=output_dir, pin=load_config().get("pin") or None)
-            return asyncio.run(sync_mgr.run_sync(delete_after_export=delete_after_export, force_vectors=force_vectors, progress=progress))
+            pages = asyncio.run(sync_mgr.run_sync(delete_after_export=delete_after_export, force_vectors=force_vectors, progress=progress))
+            if sync_mgr.storage_page_count is not None and not delete_after_export:
+                self.last_storage_sync = (sync_mgr.transport.mac, sync_mgr.storage_page_count)
+            return pages
 
     async def _async_sync_active_conn(self, output_dir: str, delete_after_export: bool = False,
                                       force_vectors: bool = False, progress=None) -> List[Any]:
@@ -279,6 +284,8 @@ class DeviceBridge:
                     break
 
                 if count == 0:
+                    if not delete_after_export:
+                        self.last_storage_sync = (conn.mac, len(pages_saved))
                     break
 
                 received_packets: Dict[int, bytes] = {}

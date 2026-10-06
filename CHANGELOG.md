@@ -2,6 +2,17 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.2.0] — 2026-10-06
+
+### Added
+- Confirmed local page deletion through the desktop Trash, including associated files and a downloaded Lucide trash icon.
+- Device-specific, persisted last-sync storage estimate based on Huion's stated 50-page maximum; uncertain scans do not replace an earlier estimate.
+- Deletion protects transcript edits, retains the live draft and removes deleted pages from session history.
+
+### Fixed
+- Export and Transcribe actions have 16px clearance above the footer.
+- Notebook storage estimates count device slots, not cumulative local imports; timeouts are not treated as empty storage.
+
 ## [1.1.3] — 2026-10-06
 
 ### Changed

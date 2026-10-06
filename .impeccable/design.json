@@ -45,7 +45,7 @@
     {
       "name": "Status footer",
       "kind": "custom",
-      "description": "Full-width footer with a 56px minimum height and 16px horizontal / 10px vertical outer layout margins: notebook connection and reconnect, flexible operation result, live draft status and fit/zoom controls. Hidden during presentation.",
+      "description": "Full-width footer with a 56px minimum height and 16px horizontal / 10px vertical outer layout margins: notebook connection and reconnect, flexible operation result, last-sync storage estimate, live draft status and fit/zoom controls. Notes actions have 16px clearance above it. Hidden during presentation.",
       "html": "<footer class=\"ds-status\"><span>X10 offline</span><span>Draft saved</span></footer>",
       "css": ".ds-status{display:flex;justify-content:space-between;align-items:center;box-sizing:border-box;background:#F2F1ED;color:#625F59;border-top:1px solid #D6D3CC;padding:10px 16px;min-height:56px;font:13px system-ui}"
     },

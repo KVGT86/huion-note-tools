@@ -170,10 +170,13 @@ class OfflineSyncManager:
         self.pin = pin
         self.renderer = MultiFormatRenderer()
         self.transport = HuionBleTransport(mac=mac)
+        self.storage_page_count: Optional[int] = None
 
     async def run_sync(self, delete_after_export: bool = False, png_only: bool = False,
                        force_vectors: bool = False, progress=None) -> List[NotePage]:
         log.info(f"Connecting to Huion Note ({self.mac}) for offline sync...")
+        self.storage_page_count = None
+        self._storage_scan_complete = True
         await self.transport.connect()
 
         try:
@@ -191,9 +194,12 @@ class OfflineSyncManager:
             today = datetime.date.today().isoformat()
             saved_names: Set[str] = set()
             vector_folder = None
+            occupied_slots = 0
 
             for page_idx in range(64):
                 count, raw_packets = await self._fetch_page(page_idx)
+                if count > 0:
+                    occupied_slots += 1
                 if count == 0 or not raw_packets:
                     continue
 
@@ -248,6 +254,8 @@ class OfflineSyncManager:
                 await self.transport.send(build_frame(OP_CLEAR_CACHE))
                 log.info(f"Purged {len(pages_saved)} exported page(s) from device memory.")
 
+            if self._storage_scan_complete and not delete_after_export:
+                self.storage_page_count = occupied_slots
             return pages_saved
 
         finally:
@@ -320,6 +328,7 @@ class OfflineSyncManager:
                     count = data[3] | (data[4] << 8)
                     break
         except asyncio.TimeoutError:
+            self._storage_scan_complete = False
             return 0, []
 
         if count == 0:
@@ -346,4 +355,6 @@ class OfflineSyncManager:
                 await asyncio.sleep(0.1)
 
         ordered = [received_packets[s] for s in sorted(received_packets)]
+        if len(ordered) != count:
+            self._storage_scan_complete = False
         return count, ordered

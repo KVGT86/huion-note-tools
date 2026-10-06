@@ -34,6 +34,10 @@ class NoteRegistry:
     def find_by_page_id(self, page_id: str) -> Optional[Note]:
         return self._by_page_id.get(page_id)
 
+    def remove(self, note: Note) -> None:
+        self._notes = [n for n in self._notes if n is not note]
+        self._by_page_id = {key: n for key, n in self._by_page_id.items() if n is not note}
+
     def load_from_disk(self, directories: str | List[str]) -> List[Note]:
         """Scan directory or directories recursively for existing SVG/JSON/MD notes and register them."""
         import os

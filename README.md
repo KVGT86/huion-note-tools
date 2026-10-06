@@ -19,9 +19,13 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 
 The Tkinter annotation editor and tray implementation remain in the repository as legacy tools; they are not features of the default Qt workspace.
 
-## Desktop 1.1.3
+## Desktop 1.2.0
 
 Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Edit transcript. Ctrl/Shift-click selects multiple pages. Export and Transcribe operate on that selection.
+
+The trash icon deletes selected local pages after confirmation, moving their associated handwriting, pen data, transcript and preview files to the desktop Trash. Restore them through your file manager. Notebook originals and the active live draft are kept; syncing can import notebook originals again. GIO's system `gio` command is required; deletion refuses to run without recoverable Trash support.
+
+The footer estimates free X10 pages from the last complete device sync, using [Huion's stated capacity of up to 50 pages](https://www.huion.com/products/huion-note). It is not a byte-level or real-time reading. Repeated imports, live pages and local deletion do not change device capacity. Hover for the observation time; sync again after writing offline or using another app. Incomplete scans leave the previous estimate unchanged, and estimates are tied to the notebook's Bluetooth address.
 
 Dropdown menus, dialogs and selection states share a consistent Qt theme. The updated transparent logo appears in the app and desktop launcher.
 

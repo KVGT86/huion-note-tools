@@ -102,11 +102,15 @@ Notes is the opening workspace; Live notebook is the second destination. Icon-le
 ### Document workspace
 Search, status filtering and multiselection sit above a document list. Selected handwriting renders as vectors. Transcript reading and editing use underlined active tabs. A cleared selection shows an explicit empty preview instead of the previous page. Batch export and transcription remain contextual.
 
+The bottom action row has 16px clearance above the footer. Export and Transcribe retain text; the adjacent Lucide trash icon has a named tooltip and accessible name. Deletion requires confirmation with Cancel as default and names its recoverable destination, Trash. Associated local files move together; device originals and the current draft remain untouched.
+
 ### Live notebook
 One toolbar groups page navigation and paper guides on the left, save/new-page icons and Present on the right. Plain, ruled or dotted paper; fit page, fit width, zoom and pan. Pressure changes locally along smooth stroke outlines. Completed geometry is cached. Single-point marks remain visible.
 
 ### Status footer
 A full-width, hairline-separated Qt status bar anchors the shell. Minimum height is 56px, with 16px horizontal and 10px vertical outer layout margins. Status groups have additional 12–16px separation. Bluetooth state and reconnect sit on the left; operation results occupy the flexible middle. Live draft state, fit and zoom controls sit on the right. Persistent instructions move into tooltips; draft state reports only what has actually happened. Saved-page browsing is distinguished from the active draft.
+
+A quiet storage label uses `~N/50 free` only after a complete sync observation for this notebook. Its tooltip gives the observation time and estimate limitations. Before an observation it says `Storage · sync to estimate`; local deletions must never imply that hardware storage was freed.
 
 ### Icons
 Use downloaded Lucide SVGs: the original 24-unit grid and 2-unit strokes, displayed at 18px and rendered by Qt's SVG icon engine. Do not draw replacements. Source revision and upstream ISC/MIT notices are bundled under `gui/icons/lucide`; the white checkbox check changes only stroke colour. Tool buttons have at least 32px targets, named tooltips, accessible names and visible keyboard focus. Icon-only controls cover familiar view and document operations; Present, Activity and Settings keep their text labels.

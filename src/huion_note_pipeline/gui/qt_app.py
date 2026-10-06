@@ -136,7 +136,7 @@ ICON_NAMES = {
     "fit-page": "maximize", "fit-width": "move-horizontal",
     "minus": "minus", "plus": "plus", "previous": "chevron-left",
     "next": "chevron-right", "reconnect": "refresh-cw", "activity": "list",
-    "settings": "settings", "bluetooth": "bluetooth",
+    "settings": "settings", "bluetooth": "bluetooth", "delete": "trash",
 }
 
 
@@ -592,6 +592,9 @@ class HuionNoteWindow(QMainWindow):
         self.footer.setContentsMargins(12, 0, 12, 0)
         self.footer.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.statusbar.addWidget(self.footer, 1)
+        self.storage_label = label("Storage · sync to estimate", "muted")
+        self.storage_label.setContentsMargins(12, 0, 12, 0)
+        self.statusbar.addPermanentWidget(self.storage_label)
         self.live_hint = label("Blank page", "muted")
         self.live_hint.setContentsMargins(12, 0, 16, 0)
         self.live_hint.setMinimumWidth(100)
@@ -605,7 +608,7 @@ class HuionNoteWindow(QMainWindow):
     def library_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(24, 18, 24, 0)
+        layout.setContentsMargins(24, 18, 24, 16)
         controls = QHBoxLayout()
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search titles and transcripts")
@@ -644,8 +647,10 @@ class HuionNoteWindow(QMainWindow):
         actions = QHBoxLayout()
         self.export_button = button("Export…", self.export_selected)
         self.transcribe_button = button("Transcribe…", self.transcribe_selected)
+        self.delete_button = tool_button("delete", "Delete selected pages…", self.delete_selected)
         actions.addWidget(self.export_button)
         actions.addWidget(self.transcribe_button)
+        actions.addWidget(self.delete_button)
         list_layout.addLayout(actions)
         self.splitter.addWidget(left)
         detail = QWidget()
@@ -766,6 +771,16 @@ class HuionNoteWindow(QMainWindow):
         else:
             self.device_label.setText("X10 offline")
             self.device_label.setToolTip("Notebook disconnected. Saved pages remain available; use Reconnect to try again.")
+        if snapshot.stored_pages is None:
+            self.storage_label.setText("Storage · sync to estimate")
+            self.storage_label.setToolTip("Sync the X10 to estimate free pages. Local page counts do not measure notebook storage.")
+        else:
+            free = max(0, 50 - snapshot.stored_pages)
+            self.storage_label.setText(f"Storage · ~{free}/50 free")
+            self.storage_label.setToolTip(
+                f"Estimated from {snapshot.stored_pages} stored pages at the last complete sync ({snapshot.storage_checked_at}). "
+                "Huion specifies up to 50 pages, not a byte-level capacity. New writing or changes in another app can change this. "
+                "Syncing or deleting local files does not free notebook memory.")
 
     def retry_connection(self) -> None:
         if not self._busy:
@@ -825,6 +840,7 @@ class HuionNoteWindow(QMainWindow):
         notes = self.selected_notes()
         self.export_button.setEnabled(bool(notes) and not self._busy)
         self.transcribe_button.setEnabled(bool(notes) and not self._busy)
+        self.delete_button.setEnabled(bool(notes) and not self._busy)
         self.library_count.setText(f"{self.note_list.count()} pages · {len(notes)} selected" if notes else
                                    f"{self.note_list.count()} page{'s' if self.note_list.count() != 1 else ''}")
         if not notes:
@@ -927,7 +943,41 @@ class HuionNoteWindow(QMainWindow):
         menu.addAction("Export selected pages…", self.export_selected)
         menu.addAction("Transcribe selected pages…", self.transcribe_selected)
         menu.addAction("Open handwriting externally", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.selected_notes()[0].svg_path)))
+        menu.addSeparator()
+        menu.addAction(ui_icon("delete"), "Delete selected pages…", self.delete_selected)
         menu.exec(self.note_list.mapToGlobal(position))
+
+    def delete_selected(self) -> None:
+        notes = self.selected_notes()
+        if not notes or self._busy or not self.resolve_editor():
+            return
+        confirmation = QMessageBox(self)
+        confirmation.setWindowTitle("Delete saved pages?")
+        confirmation.setText(f"Move {len(notes)} selected page{'s' if len(notes) != 1 else ''} to Trash?")
+        confirmation.setInformativeText("Handwriting, pen data, transcripts and local preview images will be moved together. "
+                                        "Restore them from your desktop Trash if needed. Notebook originals and the live draft are kept.")
+        confirmation.addButton(QMessageBox.StandardButton.Cancel)
+        delete = QPushButton("Move to Trash")
+        delete.setObjectName("danger")
+        confirmation.addButton(delete, QMessageBox.ButtonRole.DestructiveRole)
+        confirmation.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        confirmation.exec()
+        if confirmation.clickedButton() == delete:
+            if not self.save_draft():
+                return
+            self.run_job("Delete", lambda: self.service.delete_notes(notes))
+
+    def refresh_live_history(self) -> None:
+        kept = [i for i, path in enumerate(self._live_paths) if Path(path).exists()]
+        old_index = self._history_index
+        was_browsing = old_index < len(self._live_history)
+        self._live_history = [self._live_history[i] for i in kept]
+        self._live_paths = [self._live_paths[i] for i in kept]
+        self._history_index = kept.index(old_index) if old_index in kept else len(kept)
+        if was_browsing and old_index not in kept:
+            self.canvas.set_samples(self._current_live)
+        self.live_position.setText("Current page" if self._history_index == len(kept) else f"Saved page {self._history_index + 1}")
+        self.update_live_controls()
 
     def run_job(self, name: str, work: Any) -> None:
         if self._busy:
@@ -936,6 +986,7 @@ class HuionNoteWindow(QMainWindow):
         self.sync_button.setEnabled(False)
         self.export_button.setEnabled(False)
         self.transcribe_button.setEnabled(False)
+        self.delete_button.setEnabled(False)
         self.save_transcript_button.setEnabled(False)
         self.progress.setRange(0, 0)
         self.progress.show()
@@ -962,13 +1013,19 @@ class HuionNoteWindow(QMainWindow):
         self.sync_button.setEnabled(True)
         self.export_button.setEnabled(bool(self.selected_notes()))
         self.transcribe_button.setEnabled(bool(self.selected_notes()))
+        self.delete_button.setEnabled(bool(self.selected_notes()))
         self.save_transcript_button.setEnabled(self._editor_dirty and self._selected_note is not None)
 
     def job_complete(self, name: str, result: Any) -> None:
         self.finish_job()
+        if name == "Delete":
+            self.refresh_live_history()
+        self.refresh_connection()
         count = len(result) if isinstance(result, list) else 0
         self.log(f"{name} complete · {count} file{'s' if count != 1 else ''}" if name == "Export" else f"{name} complete.")
         self.load_library()
+        if name == "Delete":
+            self.log("Selected page files moved to Trash. Notebook originals are unchanged.")
         if name == "Transcription" and self._selected_note and not self._editor_dirty:
             self._selected_note = None
             self.selection_changed()
@@ -978,6 +1035,8 @@ class HuionNoteWindow(QMainWindow):
 
     def job_error(self, name: str, message: str) -> None:
         self.finish_job()
+        if name == "Delete":
+            self.refresh_live_history()
         self.load_library()
         if name == "Transcription" and self._selected_note and not self._editor_dirty:
             self._selected_note = None
@@ -1224,8 +1283,9 @@ class HuionNoteWindow(QMainWindow):
         confirmation.setText("Permanently erase all pages stored on the X10?")
         confirmation.setInformativeText("Pages saved on this computer are kept. Pages you haven't synced will be lost. Sync and check your saved pages before erasing.")
         confirmation.addButton(QMessageBox.StandardButton.Cancel)
-        erase = confirmation.addButton("Erase notebook memory", QMessageBox.ButtonRole.DestructiveRole)
+        erase = QPushButton("Erase notebook memory")
         erase.setObjectName("danger")
+        confirmation.addButton(erase, QMessageBox.ButtonRole.DestructiveRole)
         confirmation.setDefaultButton(QMessageBox.StandardButton.Cancel)
         confirmation.exec()
         if confirmation.clickedButton() == erase:

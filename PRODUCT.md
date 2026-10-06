@@ -20,6 +20,8 @@ Huion Note X10 over Bluetooth on this Linux PC. Local notes must remain usable w
 - CLI operations and Qt rendering use shared UI-independent backend code.
 - Live drafts are stored locally and restored after restart.
 - Device clearing requires explicit confirmation; normal sync retains device originals.
+- Local page deletion uses recoverable desktop Trash and keeps device originals and live drafts.
+- Remaining X10 pages are an estimate from the last complete device sync, not local import totals or a live storage reading.
 - Cloud transcription is an explicit action and sends selected handwriting to Gemini.
 - Physical pen fidelity must be checked with actual handwriting; synthetic rendering tests cannot establish hardware quality.
 

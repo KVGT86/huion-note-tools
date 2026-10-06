@@ -5,6 +5,8 @@ import os
 import re
 import json
 import shutil
+import subprocess
+import logging
 import tempfile
 import uuid
 from dataclasses import dataclass
@@ -43,6 +45,8 @@ def create_application() -> "HuionApplication":
 class DeviceSnapshot:
     connected: Optional[bool]
     battery: Optional[int]
+    stored_pages: Optional[int] = None
+    storage_checked_at: str = ""
 
 
 class HuionApplication:
@@ -53,6 +57,7 @@ class HuionApplication:
         self.bridge = bridge
         self.registry: NoteRegistry = pipeline.registry
         self.config = pipeline.config
+        self._storage = load_config().get("storage_estimate", {})
 
     @property
     def mac_address(self) -> str:
@@ -97,10 +102,52 @@ class HuionApplication:
     def device_snapshot(self) -> DeviceSnapshot:
         thread = getattr(self.bridge, "_stream_thread", None)
         alive = bool(thread and thread.is_alive())
+        address = getattr(getattr(self.bridge, "_current_conn", None), "mac", None) or self.mac_address
+        storage = self._storage if isinstance(self._storage, dict) else {}
+        count = storage.get("stored_pages")
+        valid = (isinstance(count, int) and not isinstance(count, bool) and count >= 0
+                 and bool(address) and storage.get("address") == address.upper())
         return DeviceSnapshot(
             connected=True if alive and getattr(self.bridge, "_is_connected", False) else None if alive else False,
             battery=getattr(self.bridge, "_last_battery", None),
+            stored_pages=count if valid else None,
+            storage_checked_at=str(storage.get("checked_at", "")) if valid else "",
         )
+
+    def delete_notes(self, notes: list[Note]) -> list[str]:
+        """Move selected local page files to the desktop Trash, never device memory."""
+        registered = self.registry.all()
+        if not notes or any(not any(n is known for known in registered) for n in notes):
+            raise ValueError("Select saved pages from the library before deleting.")
+        if any(n.status == NoteStatus.CONVERTING for n in notes):
+            raise RuntimeError("Wait for transcription to finish before deleting these pages.")
+        if not shutil.which("gio"):
+            raise RuntimeError("Desktop Trash is unavailable. Install the system GIO tools; no files were deleted.")
+        paths = set()
+        for note in notes:
+            paths.update(Path(p).absolute() for p in (note.svg_path, note.json_path, note.markdown_path) if p)
+            if note.markdown_path:
+                paths.add(Path(note.markdown_path).absolute().with_suffix(".svg"))
+            if Path(note.json_path).suffix == ".json":
+                paths.add(Path(note.svg_path).absolute().with_suffix(".png"))
+        paths = sorted(p for p in paths if p.is_file())
+        # Keep the current live draft, but a later Save must create a new page.
+        if any(p.stem == getattr(self, "_live_id", None) for p in paths):
+            strokes = self.live_draft()
+            self._live_id = None
+            self.save_live_draft(strokes)
+        try:
+            if paths:
+                subprocess.run(["gio", "trash", "--", *(str(p) for p in paths)], check=True,
+                               capture_output=True, text=True)
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError("Some files could not be moved to Trash. Check folder permissions. "
+                               "Files already moved can be restored from Trash.\n" + exc.stderr) from exc
+        finally:
+            for note in registered:
+                if not Path(note.svg_path).exists():
+                    self.registry.remove(note)
+        return [str(p) for p in paths]
 
     def start_stream(self) -> None:
         self.bridge.stream_pen_input(self.mac_address, mode="tablet")
@@ -228,18 +275,41 @@ class HuionApplication:
         self.bridge.on_hardware_button(callback)
 
     def sync(self, progress=None) -> list[Any]:
-        return self.bridge.sync_offline_pages(
+        pages = self.bridge.sync_offline_pages(
             output_dir=self.output_directory,
             mac=self.mac_address,
             delete_after_export=False,
             force_vectors=True,
             progress=progress,
         )
+        reading = getattr(self.bridge, "last_storage_sync", None)
+        if isinstance(reading, tuple) and len(reading) == 2:
+            address, count = reading
+            self._storage = {"address": address.upper(), "stored_pages": count,
+                             "checked_at": datetime.now().astimezone().strftime("%d %b %Y, %H:%M")}
+            cfg = load_config()
+            cfg["storage_estimate"] = self._storage
+            try:
+                save_config(cfg)
+                from huion.ble import CONFIG_PATH
+                os.chmod(CONFIG_PATH, 0o600)
+            except OSError:
+                logging.getLogger(__name__).warning("Storage estimate could not be saved; synced pages are safe.")
+        return pages
 
     def clear_device(self) -> None:
         from .ble_bridge import X10Device
 
         self.bridge.clear_all_pages(X10Device(address=self.mac_address))
+        self._storage = {}
+        cfg = load_config()
+        cfg.pop("storage_estimate", None)
+        try:
+            save_config(cfg)
+            from huion.ble import CONFIG_PATH
+            os.chmod(CONFIG_PATH, 0o600)
+        except OSError:
+            logging.getLogger(__name__).warning("Storage estimate reset could not be saved.")
 
     def load_notes(self) -> list[Note]:
         directories: Iterable[str] = (
