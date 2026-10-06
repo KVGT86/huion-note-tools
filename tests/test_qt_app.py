@@ -5,7 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from huion_note_pipeline.config import PipelineConfig
-from huion_note_pipeline.gui.qt_app import HuionNoteWindow
+from huion_note_pipeline.gui.qt_app import HuionNoteWindow, ICON_NAMES, ICONS, ui_icon
 from huion_note_pipeline.pipeline import NoteRegistry, SyncPipeline
 from huion_note_pipeline.store import CollisionResolver, JsonStore, MarkdownStore, SvgStore
 
@@ -40,6 +40,12 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
         CollisionResolver(str(tmp_path)),
     )
     window = HuionNoteWindow(pipeline, FakeBridge())
+    from PySide6.QtSvg import QSvgRenderer
+    for name, filename in ICON_NAMES.items():
+        assert QSvgRenderer(str(ICONS / f"{filename}.svg")).isValid()
+        assert not ui_icon(name).pixmap(18, 18).isNull()
+    assert (ICONS / "LICENSE").exists()
+    assert (ICONS / "check.svg").read_text() == (ICONS / "check-white.svg").read_text().replace("#FFFFFF", "currentColor")
     assert app.style().objectName() == "fusion"
     assert window.no_selection.isHidden() is False
     assert window.filter.accessibleName() == "Filter pages by transcript status"
@@ -98,6 +104,11 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     app.processEvents()
     assert window.live_toolbar.width() >= window.live_toolbar.minimumSizeHint().width()
     assert window.live_view_controls.geometry().right() < window.statusbar.width()
+    assert window.statusbar.height() >= 56
+    from PySide6.QtCore import QPoint
+    controls_top = window.live_view_controls.mapTo(window.statusbar, QPoint(0, 0)).y()
+    assert controls_top >= 8
+    assert controls_top + window.live_view_controls.height() <= window.statusbar.height() - 8
     window.toggle_presentation()
     assert window._presentation and not window.sidebar.isVisible()
     assert window.statusbar.isHidden()

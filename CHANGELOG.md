@@ -2,6 +2,14 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.1.3] — 2026-10-06
+
+### Changed
+- Footer has a 56px minimum height, wider outer padding and spacing between status groups.
+- Toolbar, utilities, dropdown and checkbox icons use downloaded Lucide SVG assets.
+- Upstream icon revision, ISC/MIT license notices and a colour-only checkbox variant are bundled with the package.
+- Qt renders SVG icons directly; removed custom icon geometry and raster generation.
+
 ## [1.1.2] — 2026-10-06
 
 ### Changed

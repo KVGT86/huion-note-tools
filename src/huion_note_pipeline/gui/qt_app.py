@@ -12,7 +12,7 @@ if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY"):
     os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, QUrl, QSize
-from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QIcon, QShortcut, QKeySequence, QDesktopServices, QPalette, QFont, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QIcon, QShortcut, QKeySequence, QDesktopServices, QPalette, QFont
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout,
@@ -30,6 +30,7 @@ from huion_note_pipeline.enums import NoteStatus
 
 INK, MUTED, PAPER, WARM, LINE = "#25231F", "#625F59", "#FFFFFF", "#F2F1ED", "#D6D3CC"
 ASSETS = Path(__file__).resolve().parents[3] / "assets"
+ICONS = Path(__file__).resolve().parent / "icons" / "lucide"
 STYLE = """
 QWidget { color: #25231F; font-size: 14px; }
 QMainWindow, QWidget#workspace { background: #FFFFFF; }
@@ -37,7 +38,7 @@ QDialog { background: #FFFFFF; }
 QWidget#sidebar, QWidget#paperWell { background: #F2F1ED; }
 QWidget#sidebar { border-right: 1px solid #D6D3CC; }
 QFrame#topbar { border-bottom: 1px solid #D6D3CC; background: #FFFFFF; }
-QStatusBar { background: #F2F1ED; border-top: 1px solid #D6D3CC; padding: 4px 10px; }
+QStatusBar { background: #F2F1ED; border-top: 1px solid #D6D3CC; }
 QStatusBar::item { border: 0; }
 QToolButton { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 6px; }
 QToolButton:hover { background: #E4E1DA; }
@@ -105,7 +106,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 QProgressBar { border: 0; background: #E4E1DA; max-height: 3px; }
 QProgressBar::chunk { background: #786995; }
-""".replace("__CHEVRON__", (ASSETS / "chevron-down.svg").as_posix()).replace("__CHECK__", (ASSETS / "check.svg").as_posix())
+""".replace("__CHEVRON__", (ICONS / "chevron-down.svg").as_posix()).replace("__CHECK__", (ICONS / "check-white.svg").as_posix())
 
 
 def label(text: str, role: str = "") -> QLabel:
@@ -129,37 +130,18 @@ def combo_box(items: list[str], name: str) -> QComboBox:
     return widget
 
 
-# One authored outline family, rendered for 1x–3x desktop scaling.
-ICON_PATHS = {
-    "save": "M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2ZM7 3v6h10V3M7 21v-8h10v8",
-    "new": "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6ZM14 2v6h6M12 12v6M9 15h6",
-    "present": "M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5",
-    "fit-page": "M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5M8 7h8v10H8Z",
-    "fit-width": "M3 5v14M21 5v14M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3",
-    "minus": "M5 12h14",
-    "plus": "M5 12h14M12 5v14",
-    "previous": "m15 6-6 6 6 6",
-    "next": "m9 6 6 6-6 6",
-    "reconnect": "M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 2l1 4M4 12l1 4a8 8 0 0 0 13 2",
-    "activity": "M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1",
-    "settings": "M4 7h16M4 17h16M9 4v6M15 14v6",
-    "bluetooth": "M7 7l10 10-5 4V3l5 4L7 17",
+# Original Lucide SVGs; source revision and license are bundled beside them.
+ICON_NAMES = {
+    "save": "save", "new": "file-plus", "present": "monitor",
+    "fit-page": "maximize", "fit-width": "move-horizontal",
+    "minus": "minus", "plus": "plus", "previous": "chevron-left",
+    "next": "chevron-right", "reconnect": "refresh-cw", "activity": "list",
+    "settings": "settings", "bluetooth": "bluetooth",
 }
 
 
 def ui_icon(name: str) -> QIcon:
-    svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="{ICON_PATHS[name]}" fill="none" stroke="{INK}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-    renderer = QSvgRenderer(svg.encode())
-    icon = QIcon()
-    for scale in (1, 2, 3):
-        pixmap = QPixmap(18 * scale, 18 * scale)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        renderer.render(painter)
-        painter.end()
-        pixmap.setDevicePixelRatio(scale)
-        icon.addPixmap(pixmap)
-    return icon
+    return QIcon(str(ICONS / f"{ICON_NAMES[name]}.svg"))
 
 
 def tool_button(icon: str, name: str, callback: Any, text: str = "") -> QToolButton:
@@ -592,12 +574,13 @@ class HuionNoteWindow(QMainWindow):
         self.setCentralWidget(shell)
         self.statusbar = QStatusBar()
         self.statusbar.setSizeGripEnabled(False)
+        self.statusbar.setMinimumHeight(56)
         self.setStatusBar(self.statusbar)
         connection = QWidget()
         connection.setFixedWidth(180)
         status_layout = QHBoxLayout(connection)
-        status_layout.setContentsMargins(2, 0, 8, 0)
-        status_layout.setSpacing(7)
+        status_layout.setContentsMargins(0, 0, 12, 0)
+        status_layout.setSpacing(10)
         bluetooth = QLabel()
         bluetooth.setPixmap(ui_icon("bluetooth").pixmap(18, 18))
         status_layout.addWidget(bluetooth)
@@ -606,14 +589,18 @@ class HuionNoteWindow(QMainWindow):
         status_layout.addWidget(tool_button("reconnect", "Reconnect to notebook", self.retry_connection))
         self.statusbar.addWidget(connection)
         self.footer = label("Originals stay on your notebook.", "muted")
+        self.footer.setContentsMargins(12, 0, 12, 0)
         self.footer.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.statusbar.addWidget(self.footer, 1)
         self.live_hint = label("Blank page", "muted")
+        self.live_hint.setContentsMargins(12, 0, 16, 0)
         self.live_hint.setMinimumWidth(100)
         self.live_hint.setToolTip("The current draft is saved locally every 3 seconds. Save page adds it to Notes.")
         self.statusbar.addPermanentWidget(self.live_hint)
         self.live_view_controls = view_controls(self.canvas, expand=False)
+        self.live_view_controls.layout().setSpacing(6)
         self.statusbar.addPermanentWidget(self.live_view_controls)
+        self.statusbar.layout().setContentsMargins(16, 10, 16, 10)
 
     def library_page(self) -> QWidget:
         page = QWidget()
