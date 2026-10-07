@@ -32,7 +32,8 @@ echo "[*] Upgrading pip and build tools..."
 "$VENV_DIR/bin/pip" install --upgrade pip setuptools wheel --quiet
 
 echo "[*] Installing dependencies..."
-"$VENV_DIR/bin/pip" install -e . --quiet
+"$VENV_DIR/bin/pip" install --index-url https://download.pytorch.org/whl/cpu torch --quiet
+"$VENV_DIR/bin/pip" install -e '.[handwriting]' --quiet
 
 # 3. Create Default Notes Storage Directory (~/HuionNotes)
 NOTES_DIR="$HOME/HuionNotes"

@@ -60,6 +60,19 @@ def test_existing_transcript_loads_on_restart(pipeline, tmp_output):
     assert note.markdown_path == str(svg.with_suffix(".md"))
 
 
+def test_desktop_local_transcription_uses_handwriting_model(pipeline, monkeypatch):
+    from huion_note_pipeline import htr
+    service = HuionApplication(pipeline, MagicMock())
+    path = Path(service.save_live_page([[(1000, 1000, 4000)]]))
+    note = next(n for n in service.load_notes() if n.svg_path == str(path))
+    local = MagicMock(return_value=("Meeting notes", "# Meeting notes\n"))
+    monkeypatch.setattr(htr, "convert_local", local)
+    monkeypatch.setattr(htr, "convert_tesseract", MagicMock(side_effect=AssertionError("legacy OCR used")))
+
+    assert service.convert(note).markdown_path
+    local.assert_called_once()
+
+
 def test_coloured_ink_survives_recovery_and_all_exports(pipeline, tmp_output):
     service = HuionApplication(pipeline, MagicMock())
     strokes = [[(1000, 1000, 3000)], [(2000, 2000, 5000)]]

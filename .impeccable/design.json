@@ -83,7 +83,7 @@
     {
       "name": "Document row",
       "kind": "custom",
-      "description": "Compact title, date and transcript state.",
+      "description": "Inset click-to-toggle multi-select row with title, date and transcript state; selection stays clear of the list boundary and scrollbar.",
       "html": "<div class=\"ds-row\" tabindex=\"0\">Meeting notes<br><small>06 Oct 2026 · Not transcribed</small></div>",
       "css": ".ds-row{background:#FFF;color:#25231F;border-radius:6px;padding:13px 12px;font:600 14px system-ui}.ds-row small{color:#625F59;font:12px system-ui}.ds-row:hover{background:#F2F1ED}.ds-row:focus-visible{outline:1px solid #786995;background:#E4DEF0}"
     }

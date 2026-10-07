@@ -100,7 +100,7 @@ Six-pixel control corners and rectangular paper. Qt Fusion supplies consistent n
 Notes is the opening workspace; Live notebook is the second destination. Icon-led Settings and Activity utilities stay near the sidebar foot. Version information belongs in Settings, not the navigation shell.
 
 ### Document workspace
-Search, status filtering and multiselection sit above a document list. Selected handwriting renders as vectors. Transcript reading and editing use underlined active tabs. A cleared selection shows an explicit empty preview instead of the previous page. Batch export and transcription remain contextual.
+Search and status filtering sit above a document list. Clicking a row toggles its selected state without a keyboard modifier; Select all/Clear selection applies to the visible filtered list. Rows and their selection wash remain inset from the list boundary and scrollbar. Selected handwriting renders as vectors. Transcript reading and editing use underlined active tabs. A cleared selection shows an explicit empty preview instead of the previous page. Batch export and transcription remain contextual.
 
 The bottom action row has 16px clearance above the footer. Export and Transcribe retain text; the adjacent Lucide trash icon has a named tooltip and accessible name. Deletion requires confirmation with Cancel as default and names its recoverable destination, Trash. Associated local files move together; device originals and the current draft remain untouched.
 

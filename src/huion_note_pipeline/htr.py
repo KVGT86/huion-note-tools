@@ -1,17 +1,11 @@
-"""Handwritten Text Recognition (HTR) module.
-
-Two conversion paths:
-  1. run_ocr_tesseract()  — local, free, private. Requires tesseract-ocr + pytesseract.
-  2. run_ocr_gemini()     — cloud, higher accuracy for cursive. Requires GEMINI_API_KEY.
-
-Both rasterise the SVG to PNG in-memory via CairoSVG (already installed).
-"""
+"""Handwriting recognition through local TrOCR or explicit Gemini cloud OCR."""
 from __future__ import annotations
 
 import base64
 import io
 import logging
 import os
+import importlib.util
 import re
 from pathlib import Path
 from typing import Optional
@@ -56,84 +50,87 @@ def _enhance_for_ocr(png_bytes: bytes) -> bytes:
 
 # ── Local Deep Learning / Tesseract HTR ──────────────────────────────────────
 
-_EASYOCR_READER = None
 _TROCR_BUNDLE = None
+TROCR_MODEL = "microsoft/trocr-small-handwritten"
+TROCR_REVISION = "55eb2010aeaaa246defc329d42939e0253d55c99"
 
 
-def _get_easyocr_reader():
-    global _EASYOCR_READER
-    if _EASYOCR_READER is None:
-        try:
-            import easyocr
-            _EASYOCR_READER = easyocr.Reader(["en"], gpu=False)
-        except Exception as e:
-            log.warning(f"EasyOCR initialization error: {e}")
-            _EASYOCR_READER = False
-    return _EASYOCR_READER if _EASYOCR_READER is not False else None
+def local_handwriting_available() -> bool:
+    return all(importlib.util.find_spec(name) for name in ("torch", "transformers", "sentencepiece", "google.protobuf"))
 
 
 def _get_trocr_bundle():
     global _TROCR_BUNDLE
     if _TROCR_BUNDLE is None:
         try:
-            import torch
-            from transformers import AutoImageProcessor, XLMRobertaTokenizer, TrOCRProcessor, VisionEncoderDecoderModel
-            img_proc = AutoImageProcessor.from_pretrained("microsoft/trocr-small-handwritten")
-            tok = XLMRobertaTokenizer.from_pretrained("microsoft/trocr-small-handwritten")
-            proc = TrOCRProcessor(image_processor=img_proc, tokenizer=tok)
-            model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-small-handwritten")
+            from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+            options = {"revision": TROCR_REVISION, "local_files_only": True}
+            try:
+                proc = TrOCRProcessor.from_pretrained(TROCR_MODEL, use_fast=False, **options)
+                model = VisionEncoderDecoderModel.from_pretrained(TROCR_MODEL, **options)
+            except OSError:
+                proc = TrOCRProcessor.from_pretrained(TROCR_MODEL, revision=TROCR_REVISION, use_fast=False)
+                model = VisionEncoderDecoderModel.from_pretrained(TROCR_MODEL, revision=TROCR_REVISION)
             model.eval()
-            _TROCR_BUNDLE = (proc, tok, model)
+            _TROCR_BUNDLE = (proc, model)
         except Exception as e:
             log.warning(f"TrOCR initialization error: {e}")
             _TROCR_BUNDLE = False
     return _TROCR_BUNDLE if _TROCR_BUNDLE is not False else None
 
 
+def _line_crops(png_bytes: bytes) -> list:
+    """Split a page into text-line images; TrOCR is trained on single lines."""
+    from PIL import Image
+    image = Image.open(io.BytesIO(png_bytes)).convert("L")
+    width, height = image.size
+    pixels = image.load()
+    active = [sum(pixels[x, y] < 210 for x in range(0, width, 2)) >= 2 for y in range(height)]
+    runs = []
+    start = None
+    for y, marked in enumerate(active + [False]):
+        if marked and start is None:
+            start = y
+        elif not marked and start is not None:
+            if runs and start - runs[-1][1] <= max(10, height // 180):
+                runs[-1] = (runs[-1][0], y)
+            else:
+                runs.append((start, y))
+            start = None
+    crops = []
+    for top, bottom in runs:
+        top, bottom = max(0, top - 12), min(height, bottom + 12)
+        columns = [x for x in range(width) if any(pixels[x, y] < 210 for y in range(top, bottom))]
+        if columns and bottom - top >= 6:
+            left, right = max(0, columns[0] - 16), min(width, columns[-1] + 17)
+            crops.append(image.crop((left, top, right, bottom)).convert("RGB"))
+    return crops
+
+
 def run_ocr_local(svg_path: str) -> str:
-    """High-accuracy offline handwriting recognition using deep learning models.
-
-    1. Tries EasyOCR for robust handwriting & multi-line block localization.
-    2. Falls back to TrOCR Transformer / Tesseract 5 LSTM if needed.
-    """
-    png_bytes = rasterise_svg(svg_path)
-
-    # 1. Try EasyOCR
-    reader = _get_easyocr_reader()
-    if reader is not None:
-        try:
-            results = reader.readtext(png_bytes, detail=0, paragraph=True)
-            text = "\n\n".join([r.strip() for r in results if r.strip()])
-            if text:
-                return text
-        except Exception as e:
-            log.warning(f"EasyOCR error: {e}")
-
-    # 2. Try TrOCR
+    """Recognise a handwritten page locally with line-segmented Microsoft TrOCR."""
     trocr = _get_trocr_bundle()
-    if trocr is not None:
-        try:
-            import torch
-            from PIL import Image, ImageOps
-            proc, tok, model = trocr
-            img = Image.open(io.BytesIO(png_bytes)).convert("L")
-            inv = ImageOps.invert(img)
-            bbox = inv.getbbox()
-            if bbox:
-                w, h = img.size
-                x0, y0, x1, y1 = bbox
-                crop = img.crop((max(0, x0-20), max(0, y0-20), min(w, x1+20), min(h, y1+20))).convert("RGB")
-                pixel_values = proc(crop, return_tensors="pt").pixel_values
-                with torch.no_grad():
-                    generated_ids = model.generate(pixel_values, max_new_tokens=128)
-                txt = tok.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
-                if txt:
-                    return txt
-        except Exception as e:
-            log.warning(f"TrOCR error: {e}")
-
-    # 3. Fallback: Tesseract 5
-    return run_ocr_tesseract(svg_path)
+    if trocr is None:
+        raise RuntimeError("Enhanced local handwriting recognition is not installed. Install HuionNote's handwriting extras or choose Google Gemini.")
+    import torch
+    proc, model = trocr
+    lines = _line_crops(rasterise_svg(svg_path))
+    if not lines:
+        raise RuntimeError("No handwriting was detected on this page.")
+    text = []
+    try:
+        for line in lines:
+            values = proc(images=line, return_tensors="pt").pixel_values
+            with torch.inference_mode():
+                ids = model.generate(values, max_new_tokens=96, num_beams=4)
+            result = proc.batch_decode(ids, skip_special_tokens=True)[0].strip()
+            if result:
+                text.append(result)
+    except Exception as exc:
+        raise RuntimeError("Local handwriting recognition could not finish. Try again or choose Google Gemini.") from exc
+    if not text:
+        raise RuntimeError("No readable handwriting was recognised on this page.")
+    return "\n".join(text)
 
 
 def run_ocr_tesseract(svg_path: str) -> str:
@@ -263,14 +260,15 @@ def to_markdown(raw: str, title: str = "Note") -> str:
 # ── Public entry points ───────────────────────────────────────────────────────
 
 def convert_local(svg_path: str, title: str = "Note") -> tuple[str, str]:
-    """Returns (raw_text, markdown) using local neural HTR (EasyOCR / TrOCR / Tesseract)."""
+    """Returns (raw_text, markdown) using local line-segmented TrOCR."""
     raw = run_ocr_local(svg_path)
     return raw, to_markdown(raw, title=title)
 
 
 def convert_tesseract(svg_path: str, title: str = "Note") -> tuple[str, str]:
-    """Backward compatibility alias for convert_local."""
-    return convert_local(svg_path, title=title)
+    """Legacy explicit Tesseract entry point retained for the CLI."""
+    raw = run_ocr_tesseract(svg_path)
+    return raw, to_markdown(raw, title=title)
 
 
 def convert_gemini(svg_path: str, title: str = "Note",

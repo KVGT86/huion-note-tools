@@ -8,20 +8,22 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 
 ## Features
 
-* **Notes-first workspace**: Search titles and transcripts, filter page states, and select multiple pages for export or transcription.
+* **Notes-first workspace**: Search titles and transcripts, filter page states, and click pages to build a selection for bulk export or transcription.
 * **In-app reading and review**: Crisp vector handwriting preview, Markdown reading, and side-by-side transcript editing.
 * **Batch export**: SVG, PDF, high-resolution PNG, original JSON pen samples, and Markdown with companion sketches. Existing files are preserved.
 * **Live notebook sharing**: Smooth pressure-sensitive vector ink, zoom, pan, paper guides, saved pages and recoverable local drafts. F11 presents only the notebook; Escape restores controls.
-* **Local transcription**: Tesseract OCR is the lightweight default fallback. Optional EasyOCR/TrOCR models are used when installed.
+* **Local transcription**: Line-segmented Microsoft TrOCR runs on this computer and is tuned for handwriting. Tesseract remains available only through the legacy CLI.
 * **Cloud transcription**: Explicitly selected Gemini transcription using a key configured in Settings. Only selected pages are sent. The REST integration needs no additional SDK.
 * **Device controls**: Connection and battery state, reconnect, persistent folder/address/PIN settings, and confirmed device clearing.
 * **Notion-inspired PySide6 interface**: Paper, graphite, native typography, quiet contextual actions, and an optional activity log. Native Wayland is preferred on supported desktops.
 
 The Tkinter annotation editor and tray implementation remain in the repository as legacy tools; they are not features of the default Qt workspace.
 
-## Desktop 1.3.0
+## Desktop 1.4.0
 
-Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Edit transcript. Ctrl/Shift-click selects multiple pages. Export and Transcribe operate on that selection.
+Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Edit transcript. Each click toggles a page in the selection; Select all/Clear selection handles the full filtered list. Export and Transcribe operate on that selection.
+
+Enhanced local handwriting transcription uses Microsoft's TrOCR small handwritten model. The model downloads once on first use, then the selected pages remain on this computer. If the model dependencies are unavailable, the desktop app disables the local option instead of silently substituting Tesseract.
 
 The trash icon deletes selected local pages after confirmation, moving their associated handwriting, pen data, transcript and preview files to the desktop Trash. Restore them through your file manager. Notebook originals and the active live draft are kept; syncing can import notebook originals again. GIO's system `gio` command is required; deletion refuses to run without recoverable Trash support.
 
@@ -55,7 +57,7 @@ huion-notes/
 │       ├── editor.py            # Vector in-app note annotator & canvas
 │       ├── enums.py             # NoteStatus, NoteCategory enums
 │       ├── frontmatter.py       # YAML metadata parser & generator
-│       ├── htr.py               # Local neural HTR (EasyOCR/TrOCR) & Gemini Vision
+│       ├── htr.py               # Local TrOCR handwriting recognition & Gemini Vision
 │       ├── models.py            # Data models (Note, Page, Stroke, etc.)
 │       ├── pipeline.py          # State machine & offline sync coordinator
 │       ├── store.py             # SVG, JSON, and Markdown storage managers
@@ -94,7 +96,7 @@ huion-notes/
    ```bash
    sudo apt install libxcb-cursor0
    ```
-   For local OCR, install Tesseract and its English language data:
+   Tesseract is needed only for the legacy CLI OCR command:
 
    ```bash
    sudo apt install tesseract-ocr tesseract-ocr-eng
@@ -115,10 +117,11 @@ huion-notes/
      ./start_app.py
      ```
 
-Optional local neural handwriting-recognition dependencies can be installed later with:
+Local handwriting-recognition dependencies can be installed later with:
 
 ```bash
-.venv/bin/pip install -e '.[ml]'
+.venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch
+.venv/bin/pip install -e '.[handwriting]'
 ```
 
 ## Command Line
@@ -174,7 +177,7 @@ Run the full automated test suite (220+ tests):
 * **Trademarks**: "Huion", "Huion Note", and related names, logos, or marks are registered trademarks of Shenzhen Huion Animation Technology Co., Ltd. All other company names, brand names, and product names mentioned in this project are trademarks or registered trademarks of their respective owners.
 
 ### 2. AI & Machine Learning Usage Notice
-* **Handwriting Recognition Models (HTR)**: This application integrates open-source neural network models (such as `EasyOCR` and `Microsoft TrOCR`) for offline optical character and handwriting transcription, alongside optional multimodal cloud transcription via Google's Gemini Vision API. Machine learning and vision transcription outputs are probabilistic approximations and may contain inaccuracies, misreadings, or hallucinations (particularly with cursive, mathematical notation, or low-contrast strokes). Users are advised to review transcribed Markdown files against their original vector SVG ink drawings.
+* **Handwriting Recognition Models (HTR)**: This application integrates `Microsoft TrOCR` for offline handwriting transcription, alongside optional multimodal cloud transcription via Google's Gemini Vision API. Machine learning and vision transcription outputs are probabilistic approximations and may contain inaccuracies, misreadings, or hallucinations (particularly with cursive, mathematical notation, or low-contrast strokes). Users are advised to review transcribed Markdown files against their original vector SVG ink drawings.
 * **AI-Assisted Development**: Portions of this codebase, architecture specifications, and documentation were authored and refined with the assistance of artificial intelligence coding systems under human developer oversight.
 
 ### 3. Software Usage & Hardware Interoperability

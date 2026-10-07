@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from huion.ink import PAGE_WIDTH, PAGE_HEIGHT, outline, svg_document, stroke_colors, validate_color
 from huion.ble import load_config
 from huion_note_pipeline import __version__
+from huion_note_pipeline import htr
 from huion_note_pipeline.application import HuionApplication
 from huion_note_pipeline.enums import NoteStatus
 
@@ -83,7 +84,7 @@ QComboBox QAbstractItemView { background: #FFFFFF; color: #25231F; border: 1px s
 QComboBox QAbstractItemView::item { min-height: 32px; padding: 4px 10px; border: 0; border-radius: 4px; }
 QComboBox QAbstractItemView::item:hover { background: #EEECE6; }
 QComboBox QAbstractItemView::item:selected { background: #E4DEF0; color: #25231F; }
-QListWidget { border: 0; background: #FFFFFF; }
+QListWidget { border: 1px solid transparent; background: #FFFFFF; }
 QListWidget:focus { border: 1px solid #786995; }
 QTextEdit, QTextBrowser { border: 0; padding: 16px; background: #FFFFFF; selection-background-color: #E4DEF0; selection-color: #25231F; }
 QTabWidget::pane { border: 0; border-top: 1px solid #D6D3CC; }
@@ -172,12 +173,12 @@ class NoteDelegate(QStyledItemDelegate):
     """Native list interactions with a readable title/metadata hierarchy."""
 
     def sizeHint(self, option, index) -> QSize:
-        return QSize(200, 76)
+        return QSize(200, 82)
 
     def paint(self, painter, option, index) -> None:
         from PySide6.QtWidgets import QStyle
         painter.save()
-        rect = option.rect.adjusted(0, 2, -2, -2)
+        rect = option.rect.adjusted(4, 4, -10, -4)
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -652,13 +653,20 @@ class HuionNoteWindow(QMainWindow):
         left = QWidget()
         list_layout = QVBoxLayout(left)
         list_layout.setContentsMargins(0, 8, 12, 0)
+        list_header = QHBoxLayout()
+        list_header.setContentsMargins(0, 0, 0, 0)
         self.library_count = label("0 pages", "muted")
-        list_layout.addWidget(self.library_count)
+        self.select_all_button = button("Select all", self.toggle_select_all, role="quiet")
+        self.select_all_button.setToolTip("Select every page currently shown")
+        list_header.addWidget(self.library_count)
+        list_header.addStretch()
+        list_header.addWidget(self.select_all_button)
+        list_layout.addLayout(list_header)
         self.note_list = QListWidget()
         self.note_list.setItemDelegate(NoteDelegate(self.note_list))
         self.note_list.setMouseTracking(True)
         self.note_list.setAccessibleName("Saved pages")
-        self.note_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.note_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.note_list.setWordWrap(True)
         self.note_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.note_list.itemSelectionChanged.connect(self.selection_changed)
@@ -898,11 +906,20 @@ class HuionNoteWindow(QMainWindow):
     def selected_notes(self) -> list:
         return [item.data(Qt.ItemDataRole.UserRole) for item in self.note_list.selectedItems()]
 
+    def toggle_select_all(self) -> None:
+        if self.note_list.count() and len(self.note_list.selectedItems()) < self.note_list.count():
+            self.note_list.selectAll()
+        else:
+            self.note_list.clearSelection()
+
     def selection_changed(self) -> None:
         notes = self.selected_notes()
         self.export_button.setEnabled(bool(notes) and not self._busy)
         self.transcribe_button.setEnabled(bool(notes) and not self._busy)
         self.delete_button.setEnabled(bool(notes) and not self._busy)
+        all_selected = bool(self.note_list.count()) and len(notes) == self.note_list.count()
+        self.select_all_button.setText("Clear selection" if all_selected else "Select all")
+        self.select_all_button.setEnabled(bool(self.note_list.count()) and not self._busy)
         self.library_count.setText(f"{self.note_list.count()} pages · {len(notes)} selected" if notes else
                                    f"{self.note_list.count()} page{'s' if self.note_list.count() != 1 else ''}")
         if not notes:
@@ -1047,6 +1064,7 @@ class HuionNoteWindow(QMainWindow):
             return
         self._busy = True
         self.sync_button.setEnabled(False)
+        self.select_all_button.setEnabled(False)
         self.export_button.setEnabled(False)
         self.transcribe_button.setEnabled(False)
         self.delete_button.setEnabled(False)
@@ -1074,6 +1092,7 @@ class HuionNoteWindow(QMainWindow):
         self._busy = False
         self.progress.hide()
         self.sync_button.setEnabled(True)
+        self.select_all_button.setEnabled(bool(self.note_list.count()))
         self.export_button.setEnabled(bool(self.selected_notes()))
         self.transcribe_button.setEnabled(bool(self.selected_notes()))
         self.delete_button.setEnabled(bool(self.selected_notes()))
@@ -1170,11 +1189,18 @@ class HuionNoteWindow(QMainWindow):
         layout.setSpacing(12)
         dialog.setMinimumWidth(440)
         layout.addWidget(label(f"Transcribe {len(notes)} page{'s' if len(notes) != 1 else ''}", "title"))
-        local = QRadioButton("On this computer")
-        local.setChecked(True)
+        local_ready = htr.local_handwriting_available()
+        local = QRadioButton("Enhanced local handwriting")
+        local.setEnabled(local_ready)
+        local.setChecked(local_ready)
         cloud_method = QRadioButton("Google Gemini")
+        cloud_method.setChecked(not local_ready)
         layout.addWidget(local)
-        local_hint = label("Uses installed OCR tools. Your pages stay on this computer.", "muted")
+        local_hint = label(
+            "Uses Microsoft TrOCR, tuned for handwriting. Pages stay on this computer."
+            if local_ready else
+            "Enhanced local handwriting is not installed. Install HuionNote's handwriting extra, then reopen the app.",
+            "muted")
         local_hint.setWordWrap(True)
         layout.addWidget(local_hint)
         layout.addWidget(cloud_method)

@@ -2,6 +2,17 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.4.0] — 2026-10-07
+
+### Added
+- Click-to-toggle multi-selection with a visible Select all/Clear selection action for batch export and transcription.
+- Line-segmented Microsoft TrOCR handwriting recognition as the enhanced local transcription engine.
+- CPU-only handwriting dependencies in the Linux installer; the configured model is cached for offline use after its first download.
+
+### Fixed
+- Saved-note selection backgrounds and row content are inset from the list boundary and scrollbar.
+- Local transcription no longer silently falls back to Tesseract when the handwriting model is unavailable.
+
 ## [1.3.0] — 2026-10-06
 
 ### Added

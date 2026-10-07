@@ -100,6 +100,8 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     assert window.pages.count() == 2
     assert window.pages.currentIndex() == 0
     assert window.page_title.text() == "Notes"
+    from PySide6.QtWidgets import QAbstractItemView
+    assert window.note_list.selectionMode() == QAbstractItemView.SelectionMode.MultiSelection
     assert not window.delete_button.isEnabled()
     window._show_page(1)
     assert window.page_title.text() == "Live notebook"
@@ -171,10 +173,22 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     window._show_page(0)
     window.note_list.setCurrentRow(0)
     assert window.delete_button.isEnabled()
+    window.select_all_button.click()
+    assert not window.note_list.selectedItems()
+    assert window.select_all_button.text() == "Select all"
+    window.select_all_button.click()
+    assert len(window.note_list.selectedItems()) == window.note_list.count()
+    assert window.select_all_button.text() == "Clear selection"
+    window.note_list.setCurrentRow(0)
     from PySide6.QtCore import QPoint
     action_bottom = window.export_button.mapTo(window, QPoint(0, window.export_button.height())).y()
     footer_top = window.statusbar.mapTo(window, QPoint(0, 0)).y()
     assert footer_top - action_bottom >= 16
+    card = window.note_list.visualItemRect(window.note_list.item(0))
+    image = window.note_list.viewport().grab().toImage()
+    center_y = min(image.height() - 1, card.center().y())
+    assert image.pixelColor(1, center_y).name() == "#ffffff"
+    assert image.pixelColor(image.width() - 2, center_y).name() == "#ffffff"
     assert window.no_selection.isHidden()
     window.detail_tabs.setCurrentIndex(2)
     window.show()

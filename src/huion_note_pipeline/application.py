@@ -373,7 +373,7 @@ class HuionApplication:
             raw, markdown = (
                 htr.convert_gemini(note.svg_path, title=title, api_key=self.gemini_key)
                 if cloud
-                else htr.convert_tesseract(note.svg_path, title=title)
+                else htr.convert_local(note.svg_path, title=title)
             )
             first_line = next((line.strip() for line in raw.splitlines() if line.strip()), title)
             derived = re.sub(r"[^\w\s-]", "", first_line).strip().replace(" ", "_").lower()[:40] or "note"
