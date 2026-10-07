@@ -331,7 +331,7 @@ class BleDeviceConnection:
                     log.debug(f"StartNotify on {path}: {err}")
 
     async def enter_live_tablet_mode(self) -> None:
-        """Enables notifications and performs the 3-step handshake that switches device to live mode (blue LED)."""
+        """Enable notifications and send the handshake that switches the X10 to live streaming."""
         await self.start_notifications()
         # 3-step Pen Tablet Handshake:
         await self.write_cmd(build_tablet_cmd(CMD_TABLET_NAME))
@@ -342,7 +342,7 @@ class BleDeviceConnection:
         await asyncio.sleep(0.05)
 
         self._ka_task = asyncio.create_task(self._live_keepalive_loop())
-        log.info("Entered live tablet mode (blue LED active).")
+        log.info("Entered live tablet streaming mode.")
 
     async def _live_keepalive_loop(self) -> None:
         try:

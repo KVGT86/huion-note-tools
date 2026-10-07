@@ -2,6 +2,7 @@
 import asyncio
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -119,6 +120,42 @@ def test_active_sync_records_storage_only_on_explicit_empty_reply(tmp_output):
         if frame[1] in responses:
             bridge._sync_queue.put_nowait(responses[frame[1]])
     bridge._current_conn = SimpleNamespace(mac="AA:BB:CC:DD:EE:FF", write_cmd=write,
-                                           enter_live_tablet_mode=AsyncMock())
+                                           enter_live_tablet_mode=AsyncMock(), start_notifications=AsyncMock())
     assert asyncio.run(bridge._async_sync_active_conn(str(tmp_output))) == []
     assert bridge.last_storage_sync == ("AA:BB:CC:DD:EE:FF", 0)
+    bridge._current_conn.start_notifications.assert_awaited_once()
+    bridge._current_conn.enter_live_tablet_mode.assert_not_awaited()
+
+
+def test_bridge_enters_live_handshake_only_for_tablet_mode(monkeypatch):
+    from huion_note_pipeline import ble_bridge
+    calls = []
+    ready = threading.Event()
+
+    class Connection:
+        def __init__(self, mac):
+            self.mac = mac
+        async def connect(self):
+            calls.append("connect")
+        async def setup_signals(self, *_):
+            pass
+        async def start_notifications(self):
+            calls.append("notes")
+            ready.set()
+        async def enter_live_tablet_mode(self):
+            calls.append("tablet")
+            ready.set()
+        async def read_battery(self):
+            return None
+        async def close(self):
+            calls.append("close")
+
+    monkeypatch.setattr(ble_bridge, "BleDeviceConnection", Connection)
+    bridge = ble_bridge.DeviceBridge()
+    bridge.stream_pen_input("AA:BB:CC:DD:EE:FF", mode="notes")
+    assert ready.wait(1) and "notes" in calls and "tablet" not in calls
+    bridge.stop_pen_input()
+    ready.clear()
+    bridge.stream_pen_input("AA:BB:CC:DD:EE:FF", mode="tablet")
+    assert ready.wait(1) and calls[-1] == "tablet"
+    bridge.stop_pen_input()

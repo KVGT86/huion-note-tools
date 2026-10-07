@@ -2,6 +2,13 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.4.1] — 2026-10-07
+
+### Fixed
+- Notes keeps the X10 in its normal paired state; the live-tablet handshake now runs only while Live notebook is open.
+- Sync and reconnect return to the mode requested by the active workspace instead of forcing live streaming.
+- Connection status distinguishes paired and live states.
+
 ## [1.4.0] — 2026-10-07
 
 ### Added

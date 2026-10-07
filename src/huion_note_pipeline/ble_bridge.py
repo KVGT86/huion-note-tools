@@ -114,7 +114,8 @@ class DeviceBridge:
         self._stop_event = threading.Event()
         self._current_loop: Optional[asyncio.AbstractEventLoop] = None
         self._conn: Optional[BleDeviceConnection] = None
-        self._current_conn: Optional[BleDeviceConnection] = None  # active live connection
+        self._current_conn: Optional[BleDeviceConnection] = None  # active notebook connection
+        self._mode = "notes"
         self._is_connected: bool = False
         self._last_battery: Optional[int] = None  # cached battery %
         self._sync_queue: Optional[asyncio.Queue] = None
@@ -359,9 +360,12 @@ class DeviceBridge:
 
         finally:
             self._sync_queue = None
-            # Return seamlessly to live tablet mode on the same socket
+            # Return to the mode requested by the current workspace.
             try:
-                await conn.enter_live_tablet_mode()
+                if self._mode == "tablet":
+                    await conn.enter_live_tablet_mode()
+                else:
+                    await conn.start_notifications()
             except Exception:
                 pass
 
@@ -369,10 +373,15 @@ class DeviceBridge:
         addr = getattr(device, "address", str(device))
         if addr == "HUION-NOTE-X10":
             return
+        if mode not in {"notes", "tablet"}:
+            raise ValueError(f"Unsupported notebook mode: {mode}")
 
         if self._stream_thread and self._stream_thread.is_alive():
-            return
+            if self._mode == mode:
+                return
+            self.stop_pen_input()
 
+        self._mode = mode
         self._stop_event.clear()
 
         async def _ble_worker():
@@ -387,7 +396,10 @@ class DeviceBridge:
                     await conn.connect()
                     self._is_connected = True
                     await conn.setup_signals(self._handle_raw_data, lambda: disconnected_event.set())
-                    await conn.enter_live_tablet_mode()
+                    if mode == "tablet":
+                        await conn.enter_live_tablet_mode()
+                    else:
+                        await conn.start_notifications()
 
                     # Read battery immediately after connect
                     try:
@@ -442,12 +454,12 @@ class DeviceBridge:
         self._stream_thread = None
         self._current_loop = None
 
-    def retry_connection(self, mac: str = "25:6C:BB:8D:19:50") -> None:
+    def retry_connection(self, mac: str = "25:6C:BB:8D:19:50", mode: str = "tablet") -> None:
         """Forces an immediate, clean reconnection cycle."""
         self._is_connected = False
         self._last_battery = None
         self.stop_pen_input()
-        self.stream_pen_input(mac, mode="tablet")
+        self.stream_pen_input(mac, mode=mode)
 
     def pull(self, device: X10Device) -> List[Page]:
         """Pull stored offline notes using the robust OfflineSyncManager."""
@@ -477,7 +489,7 @@ class DeviceBridge:
             return []
         finally:
             if was_streaming:
-                self.stream_pen_input(device)
+                self.stream_pen_input(device, mode=self._mode)
 
     def clear_synced_pages(self, device: X10Device, synced_page_ids: Set[str]) -> None:
         device.stored_pages = [p for p in device.stored_pages if p.page_id not in synced_page_ids]

@@ -112,6 +112,8 @@ A downloaded Lucide palette icon and visible colour name open a compact menu bes
 ### Status footer
 A full-width, hairline-separated Qt status bar anchors the shell. Minimum height is 56px, with 16px horizontal and 10px vertical outer layout margins. Status groups have additional 12–16px separation. Bluetooth state and reconnect sit on the left; operation results occupy the flexible middle. Live draft state, fit and zoom controls sit on the right. Persistent instructions move into tooltips; draft state reports only what has actually happened. Saved-page browsing is distinguished from the active draft.
 
+Connection copy distinguishes `X10 paired` on Notes from `X10 live` while the Live notebook is streaming. Navigation owns the hardware mode: leaving Live notebook returns the X10 to its normal paired state.
+
 A quiet storage label uses `~N/50 free` only after a complete sync observation for this notebook. Its tooltip gives the observation time and estimate limitations. Before an observation it says `Storage · sync to estimate`; local deletions must never imply that hardware storage was freed.
 
 ### Icons

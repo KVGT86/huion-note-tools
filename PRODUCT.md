@@ -19,6 +19,7 @@ Huion Note X10 over Bluetooth on this Linux PC. Local notes must remain usable w
 - Raw pen samples remain available separately from rendered geometry.
 - CLI operations and Qt rendering use shared UI-independent backend code.
 - Live drafts are stored locally and restored after restart.
+- Notes keeps a normal paired X10 connection; only the Live notebook workspace may enable pen streaming.
 - Live ink colours belong to individual strokes and survive drafts, saved-page browsing and exports.
 - Device clearing requires explicit confirmation; normal sync retains device originals.
 - Local page deletion uses recoverable desktop Trash and keeps device originals and live drafts.

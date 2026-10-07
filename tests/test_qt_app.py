@@ -15,6 +15,9 @@ class FakeBridge:
     _is_connected = False
     _last_battery = None
 
+    def __init__(self):
+        self.modes = []
+
     def on_pen_point(self, callback):
         self.pen_callback = callback
 
@@ -26,6 +29,10 @@ class FakeBridge:
 
     def stream_pen_input(self, mac, mode="tablet"):
         self.started = (mac, mode)
+        self.modes.append(mode)
+
+    def retry_connection(self, mac, mode="tablet"):
+        self.modes.append(mode)
 
 
 def test_delete_confirmation_and_history_keep_live_ink(pipeline, monkeypatch):
@@ -100,11 +107,19 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     assert window.pages.count() == 2
     assert window.pages.currentIndex() == 0
     assert window.page_title.text() == "Notes"
+    assert window.service.bridge.modes == ["notes"]
+    from huion_note_pipeline.application import DeviceSnapshot
+    monkeypatch.setattr(window.service, "device_snapshot", lambda: DeviceSnapshot(True, 80))
+    window.refresh_connection()
+    assert window.device_label.text() == "X10 paired · 80%"
     from PySide6.QtWidgets import QAbstractItemView
     assert window.note_list.selectionMode() == QAbstractItemView.SelectionMode.MultiSelection
     assert not window.delete_button.isEnabled()
     window._show_page(1)
     assert window.page_title.text() == "Live notebook"
+    assert window.service.bridge.modes[-1] == "tablet"
+    window.refresh_connection()
+    assert window.device_label.text() == "X10 live · 80%"
     assert window.statusbar.isAncestorOf(window.live_view_controls)
     assert window.statusbar.isAncestorOf(window.device_label)
     assert window.live_hint.text() == "Blank page"
@@ -171,6 +186,7 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     from PySide6.QtCore import Qt
     window.resize(860, 580)
     window._show_page(0)
+    assert window.service.bridge.modes[-1] == "notes"
     window.note_list.setCurrentRow(0)
     assert window.delete_button.isEnabled()
     window.select_all_button.click()

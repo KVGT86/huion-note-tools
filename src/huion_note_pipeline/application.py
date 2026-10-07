@@ -155,8 +155,11 @@ class HuionApplication:
     def start_stream(self) -> None:
         self.bridge.stream_pen_input(self.mac_address, mode="tablet")
 
-    def retry_connection(self) -> None:
-        self.bridge.retry_connection(self.mac_address)
+    def start_notes(self) -> None:
+        self.bridge.stream_pen_input(self.mac_address, mode="notes")
+
+    def retry_connection(self, live: bool = False) -> None:
+        self.bridge.retry_connection(self.mac_address, mode="tablet" if live else "notes")
 
     def stop(self) -> None:
         self.bridge.stop_pen_input()

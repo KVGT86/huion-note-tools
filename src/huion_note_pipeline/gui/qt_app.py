@@ -491,6 +491,7 @@ class HuionNoteWindow(QMainWindow):
         self._current_colors = []
         self._selected_note = None
         self._editor_dirty = False
+        self._device_mode = None
         self.setWindowTitle("HuionNote")
         self.resize(1280, 820)
         self.setMinimumSize(860, 580)
@@ -521,7 +522,6 @@ class HuionNoteWindow(QMainWindow):
             self.update_ink_menu()
         except Exception as exc:
             self.log(str(exc))
-        self.service.start_stream()
         self.update_live_controls()
         self.refresh_connection()
         self.load_library()
@@ -819,6 +819,10 @@ class HuionNoteWindow(QMainWindow):
             nav.setChecked(i == index)
         self.live_hint.setVisible(index == 1)
         self.live_view_controls.setVisible(index == 1)
+        mode = "notes" if index == 0 else "tablet"
+        if mode != self._device_mode:
+            self._device_mode = mode
+            self.service.start_notes() if mode == "notes" else self.service.start_stream()
         if not self._busy:
             self.footer.setText("" if index == 1 else "Originals stay on your notebook.")
 
@@ -833,8 +837,11 @@ class HuionNoteWindow(QMainWindow):
     def refresh_connection(self) -> None:
         snapshot = self.service.device_snapshot()
         if snapshot.connected is True:
-            self.device_label.setText("X10" + (f" · {snapshot.battery}%" if snapshot.battery is not None else " connected"))
-            self.device_label.setToolTip("Notebook connected" + (f" · {snapshot.battery}% battery" if snapshot.battery is not None else ""))
+            state = "live" if self.pages.currentIndex() == 1 else "paired"
+            self.device_label.setText(f"X10 {state}" + (f" · {snapshot.battery}%" if snapshot.battery is not None else ""))
+            self.device_label.setToolTip(
+                ("Live pen streaming" if state == "live" else "Notebook paired; live streaming is off")
+                + (f" · {snapshot.battery}% battery" if snapshot.battery is not None else ""))
         elif snapshot.connected is None:
             self.device_label.setText("Connecting…")
             self.device_label.setToolTip("Connecting to X10. Touch the paper with your pen to wake it.")
@@ -854,7 +861,8 @@ class HuionNoteWindow(QMainWindow):
 
     def retry_connection(self) -> None:
         if not self._busy:
-            threading.Thread(target=self.service.retry_connection, daemon=True).start()
+            live = self.pages.currentIndex() == 1
+            threading.Thread(target=lambda: self.service.retry_connection(live), daemon=True).start()
             self.log("Reconnecting to notebook…")
 
     def load_library(self) -> None:
