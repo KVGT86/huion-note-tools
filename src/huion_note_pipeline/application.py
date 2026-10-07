@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+import io
 import json
 import shutil
 import subprocess
@@ -61,6 +62,7 @@ class HuionApplication:
         self._storage = load_config().get("storage_estimate", {})
         self.live_colors: list[str] = []
         self.ink_color = INK
+        self.live_background: str | None = None
 
     @property
     def mac_address(self) -> str:
@@ -191,10 +193,47 @@ class HuionApplication:
         try:
             self.live_colors = stroke_colors(len(strokes), data.get("colors"))
             self.ink_color = validate_color(data.get("ink_color", INK))
+            background = data.get("background_image")
+            if background not in (None, ".live-background.jpg"):
+                raise ValueError("The saved page image reference is invalid.")
+            candidate = Path(self.output_directory) / background if background else None
+            self.live_background = str(candidate) if candidate and candidate.is_file() else None
         except ValueError:
             self._draft_invalid = True
-            raise ValueError("The saved ink colours are invalid; the draft has been left untouched.")
+            raise ValueError("The saved live page metadata is invalid; the draft has been left untouched.")
         return strokes
+
+    def import_live_background(self, source: str) -> str:
+        """Normalize a user image into the current recoverable live draft."""
+        from PIL import Image, ImageOps
+        source_path = Path(source)
+        if not source_path.is_file():
+            raise FileNotFoundError(source)
+        folder = Path(self.output_directory)
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / ".live-background.jpg"
+        try:
+            with Image.open(source_path) as opened:
+                if opened.width * opened.height > 80_000_000:
+                    raise ValueError("This image is too large. Choose one under 80 megapixels.")
+                image = ImageOps.exif_transpose(opened).convert("RGB")
+                image.thumbnail((2820, 3740), Image.Resampling.LANCZOS)
+                with tempfile.NamedTemporaryFile(suffix=".jpg", dir=folder, delete=False) as tmp:
+                    image.save(tmp, format="JPEG", quality=92, optimize=True)
+                    tmp.flush()
+                    os.fsync(tmp.fileno())
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ValueError("This image could not be opened. Choose a valid JPEG, PNG, WebP, BMP or TIFF file.") from exc
+        os.replace(tmp.name, target)
+        self.live_background = str(target)
+        return self.live_background
+
+    def clear_live_background(self) -> None:
+        if self.live_background:
+            Path(self.live_background).unlink(missing_ok=True)
+        self.live_background = None
 
     def save_live_draft(self, strokes: list, colors: list[str] | None = None, ink_color: str | None = None) -> None:
         colors = stroke_colors(len(strokes), colors if colors is not None else
@@ -209,7 +248,9 @@ class HuionApplication:
             self._draft_invalid = False
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=folder, delete=False) as tmp:
             json.dump({"page_id": self._live_id, "strokes": strokes,
-                       "colors": colors, "ink_color": ink_color}, tmp)
+                       "colors": colors, "ink_color": ink_color,
+                       "background_image": Path(self.live_background).name
+                       if self.live_background and Path(self.live_background).is_file() else None}, tmp)
             tmp.flush()
             os.fsync(tmp.fileno())
         os.replace(tmp.name, folder / ".live-draft.json")
@@ -221,15 +262,24 @@ class HuionApplication:
         folder = Path(self.output_directory) / "Live"
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{self._live_id}.svg"
-        path.write_text(svg_document(strokes, self.live_colors), encoding="utf-8")
+        background = None
+        if self.live_background and Path(self.live_background).is_file():
+            from PIL import Image
+            content = Path(self.live_background).read_bytes()
+            with Image.open(io.BytesIO(content)) as image:
+                background = ("image/jpeg", content, image.width, image.height)
+        path.write_text(svg_document(strokes, self.live_colors, background), encoding="utf-8")
         path.with_suffix(".json").write_text(json.dumps({
             "page_width": 28200, "page_height": 37400, "max_pressure": 8192,
             "strokes": [{"color": color, "points": [{"x": x, "y": y, "pressure": p} for x, y, p in s]}
                         for s, color in zip(strokes, self.live_colors)],
+            "background_image": {"embedded_in_svg": True, "mime_type": background[0],
+                                 "width": background[2], "height": background[3]} if background else None,
         }), encoding="utf-8")
         return str(path)
 
     def new_live_page(self) -> None:
+        self.clear_live_background()
         self._live_id = None
         self.save_live_draft([])
 

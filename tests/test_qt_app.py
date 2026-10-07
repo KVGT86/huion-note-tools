@@ -167,10 +167,17 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     monkeypatch.setattr("huion_note_pipeline.gui.qt_app.QColorDialog.getColor", lambda *a: QColor("#765432"))
     window.choose_ink()
     assert window.ink_button.text() == "#765432"
-    window.resize(860, 580)
+    from PySide6.QtCore import Qt
+    window.resize(1280, 820)
     window.show()
     app.processEvents()
+    assert window.image_button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+    window.resize(860, 580)
+    app.processEvents()
     assert window.live_toolbar.width() >= window.live_toolbar.minimumSizeHint().width()
+    assert window.image_button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
+    assert window.ink_button.toolTip().startswith("Ink colour")
+    assert window.image_button.accessibleName() == "Page image"
     assert window.live_view_controls.geometry().right() < window.statusbar.width()
     assert window.statusbar.height() >= 56
     from PySide6.QtCore import QPoint
@@ -183,7 +190,6 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     window.leave_presentation()
     assert not window._presentation
     assert not window.statusbar.isHidden()
-    from PySide6.QtCore import Qt
     window.resize(860, 580)
     window._show_page(0)
     assert window.service.bridge.modes[-1] == "notes"
@@ -225,6 +231,29 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     app.processEvents()
     import json
     assert json.loads((tmp_path / ".live-draft.json").read_text())["strokes"] == [[list(p) for p in s] for s in current]
+
+
+def test_live_image_can_be_annotated_saved_and_browsed(pipeline, tmp_output, monkeypatch):
+    import json
+    from PIL import Image
+    from huion_note_pipeline.application import HuionApplication
+    app = QApplication.instance() or QApplication([])
+    source = tmp_output / "diagram.png"
+    Image.new("RGB", (640, 360), "#E4DEF0").save(source)
+    window = HuionNoteWindow(service=HuionApplication(pipeline, FakeBridge()))
+    monkeypatch.setattr("huion_note_pipeline.gui.qt_app.QFileDialog.getOpenFileName",
+                        lambda *args: (str(source), "Images"))
+    window._show_page(1)
+    window.choose_live_image()
+    assert window.canvas.has_background() and window.remove_image_action.isEnabled()
+    assert json.loads((tmp_output / ".live-draft.json").read_text())["background_image"] == ".live-background.jpg"
+    assert window.save_live()
+    window.new_page()
+    assert not window.canvas.has_background()
+    window.browse_live(-1)
+    assert window.canvas.has_background()
+    window.close()
+    app.processEvents()
 
 
 def test_live_overlap_is_solid_for_active_and_completed_strokes():

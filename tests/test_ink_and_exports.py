@@ -60,6 +60,31 @@ def test_existing_transcript_loads_on_restart(pipeline, tmp_output):
     assert note.markdown_path == str(svg.with_suffix(".md"))
 
 
+def test_live_image_is_embedded_and_recovers(pipeline, tmp_output):
+    from PIL import Image
+    source = tmp_output / "source.png"
+    Image.new("RGB", (400, 200), "#2457A7").save(source)
+    original = source.read_bytes()
+    service = HuionApplication(pipeline, MagicMock())
+    background = Path(service.import_live_background(str(source)))
+    service.save_live_draft([])
+
+    recovered = HuionApplication(pipeline, MagicMock())
+    assert recovered.live_draft() == []
+    assert recovered.live_background == str(background)
+    saved = Path(recovered.save_live_page([]))
+    assert 'href="data:image/jpeg;base64,' in saved.read_text()
+    assert json.loads(saved.with_suffix(".json").read_text())["background_image"]["embedded_in_svg"]
+    note = next(n for n in recovered.load_notes() if n.svg_path == str(saved))
+    exported = recovered.export_notes([note], str(tmp_output / "image-exports"), ["png", "pdf"])
+    pixel = Image.open(exported[0]).getpixel((1410, 1870))
+    assert pixel[0] < 100 and pixel[2] > 100
+    assert Path(exported[1]).read_bytes().startswith(b"%PDF")
+    assert source.read_bytes() == original
+    recovered.new_live_page()
+    assert recovered.live_background is None and not background.exists()
+
+
 def test_desktop_local_transcription_uses_handwriting_model(pipeline, monkeypatch):
     from huion_note_pipeline import htr
     service = HuionApplication(pipeline, MagicMock())

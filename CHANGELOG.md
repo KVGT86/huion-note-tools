@@ -2,6 +2,17 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.5.0] — 2026-10-07
+
+### Added
+- Image backgrounds for the Live notebook, with JPEG, PNG, WebP, BMP and TIFF import through a compact Image menu.
+- Image replacement/removal, draft recovery and in-session saved-page browsing without modifying the original file.
+- Self-contained saved SVGs that embed the normalized image beneath vector ink; PNG and PDF exports retain the annotation background.
+
+### Changed
+- Live toolbar labels collapse to accessible icon-only controls at compact window widths.
+- Imported images are orientation-corrected, contained without distortion and normalized to a practical local JPEG size.
+
 ## [1.4.1] — 2026-10-07
 
 ### Fixed

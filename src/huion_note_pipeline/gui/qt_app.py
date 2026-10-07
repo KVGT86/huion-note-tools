@@ -12,7 +12,7 @@ if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY"):
     os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, QUrl, QSize
-from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QIcon, QShortcut, QKeySequence, QDesktopServices, QPalette, QFont, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF, QIcon, QShortcut, QKeySequence, QDesktopServices, QPalette, QFont, QPixmap, QImage
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QVBoxLayout,
@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QProgressBar, QMenu, QSizePolicy, QStyledItemDelegate, QRadioButton, QListView, QToolButton, QStatusBar, QColorDialog,
 )
 
-from huion.ink import PAGE_WIDTH, PAGE_HEIGHT, outline, svg_document, stroke_colors, validate_color
+from huion.ink import PAGE_WIDTH, PAGE_HEIGHT, outline, svg_document, stroke_colors, validate_color, fit_image_rect
 from huion.ble import load_config
 from huion_note_pipeline import __version__
 from huion_note_pipeline import htr
@@ -140,6 +140,7 @@ ICON_NAMES = {
     "minus": "minus", "plus": "plus", "previous": "chevron-left",
     "next": "chevron-right", "reconnect": "refresh-cw", "activity": "list",
     "settings": "settings", "bluetooth": "bluetooth", "delete": "trash", "color": "palette",
+    "image": "image-plus",
 }
 
 
@@ -285,7 +286,11 @@ class PaperView(QWidget):
         painter.setClipRect(page)
         if self.renderer and self.renderer.isValid():
             self.renderer.render(painter, page)
+        self.paint_background(painter, page)
         self.paint_ink(painter, page)
+
+    def paint_background(self, painter: QPainter, page: QRectF) -> None:
+        pass
 
     def paint_ink(self, painter: QPainter, page: QRectF) -> None:
         pass
@@ -302,6 +307,7 @@ class LiveCanvas(PaperView):
         self._colors = []
         self.ink_color = INK
         self._active_color = INK
+        self._background = QImage()
         self._dirty = False
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._paint_pending)
@@ -330,6 +336,19 @@ class LiveCanvas(PaperView):
         self._geometry = [QPolygonF([QPointF(x, y) for x, y in outline(s)]) for s in self._strokes]
         self.update()
 
+    def set_background(self, source: str | QImage | None) -> None:
+        image = QImage(source) if source is not None else QImage()
+        if source is not None and image.isNull():
+            raise ValueError("The page image could not be displayed.")
+        self._background = image
+        self.update()
+
+    def background_image(self) -> QImage | None:
+        return QImage(self._background) if not self._background.isNull() else None
+
+    def has_background(self) -> bool:
+        return not self._background.isNull()
+
     def add_point(self, point: Any) -> None:
         touching = getattr(point, "touch", getattr(point, "pressure", 0) > 0)
         if touching and getattr(point, "pressure", 0) > 0:
@@ -352,6 +371,16 @@ class LiveCanvas(PaperView):
 
     def to_svg(self) -> str:
         return svg_document(self.samples(), self.colors())
+
+    def paint_background(self, painter: QPainter, page: QRectF) -> None:
+        if self._background.isNull():
+            return
+        x, y, width, height = fit_image_rect(self._background.width(), self._background.height())
+        painter.save()
+        painter.translate(page.topLeft())
+        painter.scale(page.width() / PAGE_WIDTH, page.height() / PAGE_HEIGHT)
+        painter.drawImage(QRectF(x, y, width, height), self._background)
+        painter.restore()
 
     def paint_ink(self, painter: QPainter, page: QRectF) -> None:
         painter.save()
@@ -485,10 +514,12 @@ class HuionNoteWindow(QMainWindow):
         self._presentation = False
         self._live_history = []
         self._live_color_history = []
+        self._live_background_history = []
         self._live_paths = []
         self._history_index = 0
         self._current_live = []
         self._current_colors = []
+        self._current_background = None
         self._selected_note = None
         self._editor_dirty = False
         self._device_mode = None
@@ -517,6 +548,7 @@ class HuionNoteWindow(QMainWindow):
         try:
             strokes = self.service.live_draft()
             self.canvas.set_samples(strokes, self.service.live_colors)
+            self.canvas.set_background(self.service.live_background)
             self.canvas.set_ink_color(self.service.ink_color)
             self._draft_dirty = False
             self.update_ink_menu()
@@ -775,12 +807,20 @@ class HuionNoteWindow(QMainWindow):
         self.ink_menu.addAction("Custom colour…", self.choose_ink)
         self.ink_button.setMenu(self.ink_menu)
         tools.addWidget(self.ink_button)
+        self.image_button = tool_button("image", "Page image", lambda: None, "Image")
+        self.image_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.image_menu = QMenu(self)
+        self.image_menu.addAction(ui_icon("image"), "Choose image…", self.choose_live_image)
+        self.remove_image_action = self.image_menu.addAction(ui_icon("delete"), "Remove image", self.remove_live_image)
+        self.remove_image_action.setEnabled(False)
+        self.image_button.setMenu(self.image_menu)
+        tools.addWidget(self.image_button)
         tools.addStretch()
         tools.addWidget(tool_button("save", "Save page to Notes (Ctrl+S)", self.save_live))
         tools.addWidget(tool_button("new", "Save and start a new page (Ctrl+N)", self.new_page))
         tools.addWidget(tool_divider())
-        present = tool_button("present", "Present page (F11). Press Escape to return.", self.toggle_presentation, "Present")
-        tools.addWidget(present)
+        self.present_button = tool_button("present", "Present page (F11). Press Escape to return.", self.toggle_presentation, "Present")
+        tools.addWidget(self.present_button)
         layout.addWidget(self.live_toolbar)
         self.canvas = LiveCanvas()
         layout.addWidget(self.canvas, 1)
@@ -807,6 +847,31 @@ class HuionNoteWindow(QMainWindow):
                                       QColorDialog.ColorDialogOption.DontUseNativeDialog)
         if color.isValid():
             self.change_ink(color.name())
+
+    def choose_live_image(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose an image to annotate", str(Path.home()),
+            "Images (*.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff)")
+        if not path:
+            return
+        if self._history_index < len(self._live_history):
+            self.browse_live(len(self._live_history) - self._history_index)
+        try:
+            self.canvas.set_background(self.service.import_live_background(path))
+            self.live_changed()
+            self.save_draft()
+            self.log("Page image ready for annotation.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Image could not be added", str(exc))
+
+    def remove_live_image(self) -> None:
+        if self._history_index < len(self._live_history):
+            self.browse_live(len(self._live_history) - self._history_index)
+        self.service.clear_live_background()
+        self.canvas.set_background(None)
+        self.live_changed()
+        self.save_draft()
+        self.log("Page image removed. The original file was not changed.")
 
     def change_paper(self, style: str) -> None:
         self.canvas.paper_style = style
@@ -986,10 +1051,18 @@ class HuionNoteWindow(QMainWindow):
             self.review_splitter.setOrientation(orientation)
             self.review_splitter.setSizes([400, 400])
 
+    def adapt_live_toolbar(self) -> None:
+        style = (Qt.ToolButtonStyle.ToolButtonIconOnly if self.width() < 1050
+                 else Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        for control in (self.ink_button, self.image_button, self.present_button):
+            control.setToolButtonStyle(style)
+
     def resizeEvent(self, event: Any) -> None:
         super().resizeEvent(event)
         if hasattr(self, "review_splitter"):
             QTimer.singleShot(0, self.adapt_review)
+        if hasattr(self, "live_toolbar"):
+            QTimer.singleShot(0, self.adapt_live_toolbar)
 
     def editor_changed(self) -> None:
         self._editor_dirty = True
@@ -1060,10 +1133,12 @@ class HuionNoteWindow(QMainWindow):
         was_browsing = old_index < len(self._live_history)
         self._live_history = [self._live_history[i] for i in kept]
         self._live_color_history = [self._live_color_history[i] for i in kept]
+        self._live_background_history = [self._live_background_history[i] for i in kept]
         self._live_paths = [self._live_paths[i] for i in kept]
         self._history_index = kept.index(old_index) if old_index in kept else len(kept)
         if was_browsing and old_index not in kept:
             self.canvas.set_samples(self._current_live, self._current_colors)
+            self.canvas.set_background(self._current_background)
         self.live_position.setText("Current page" if self._history_index == len(kept) else f"Saved page {self._history_index + 1}")
         self.update_live_controls()
 
@@ -1244,6 +1319,7 @@ class HuionNoteWindow(QMainWindow):
         if self._history_index < len(self._live_history):
             self._history_index = len(self._live_history)
             self.canvas.set_samples(self._current_live, self._current_colors)
+            self.canvas.set_background(self._current_background)
             self.live_position.setText("Current page")
             self.update_live_controls()
         self.canvas.add_point(point)
@@ -1255,12 +1331,13 @@ class HuionNoteWindow(QMainWindow):
     def update_live_controls(self) -> None:
         self.previous_page_button.setEnabled(self._history_index > 0)
         self.next_page_button.setEnabled(self._history_index < len(self._live_history))
+        self.remove_image_action.setEnabled(self.canvas.has_background())
         if self._history_index < len(self._live_history):
             text = "Saved page"
         elif self._draft_dirty:
             text = "Unsaved changes"
         else:
-            text = "Draft saved" if self.canvas.samples() else "Blank page"
+            text = "Draft saved" if self.canvas.samples() or self.canvas.has_background() else "Blank page"
         self.live_hint.setText(text)
 
     def save_draft(self) -> bool:
@@ -1282,8 +1359,8 @@ class HuionNoteWindow(QMainWindow):
         if self._history_index < len(self._live_history):
             self._last_live_path = self._live_paths[self._history_index]
             return True
-        if not self.canvas.samples():
-            self.log("Write on the notebook before saving a page.")
+        if not self.canvas.samples() and not self.canvas.has_background():
+            self.log("Write on the notebook or add an image before saving a page.")
             return False
         try:
             self._last_live_path = self.service.save_live_page(self.canvas.samples(), self.canvas.colors(), self.canvas.ink_color)
@@ -1299,11 +1376,12 @@ class HuionNoteWindow(QMainWindow):
     def new_page(self) -> None:
         if self._history_index < len(self._live_history):
             self.browse_live(len(self._live_history) - self._history_index)
-        if self.canvas.samples():
+        if self.canvas.samples() or self.canvas.has_background():
             if not self.save_live():
                 return
             self._live_history.append(self.canvas.samples())
             self._live_color_history.append(self.canvas.colors())
+            self._live_background_history.append(self.canvas.background_image())
             self._live_paths.append(self._last_live_path)
         try:
             self.service.new_live_page()
@@ -1311,9 +1389,11 @@ class HuionNoteWindow(QMainWindow):
             self.log(f"Could not start a new page: {exc}")
             return
         self.canvas.set_samples([])
+        self.canvas.set_background(None)
         self._history_index = len(self._live_history)
         self._current_live = []
         self._current_colors = []
+        self._current_background = None
         self._draft_dirty = False
         self.live_position.setText("Current page")
         self.update_live_controls()
@@ -1328,9 +1408,12 @@ class HuionNoteWindow(QMainWindow):
                 return
             self._current_live = self.canvas.samples()
             self._current_colors = self.canvas.colors()
+            self._current_background = self.canvas.background_image()
         self._history_index = target
         self.canvas.set_samples(self._current_live if target == len(self._live_history) else self._live_history[target],
                                 self._current_colors if target == len(self._live_history) else self._live_color_history[target])
+        self.canvas.set_background(self._current_background if target == len(self._live_history)
+                                   else self._live_background_history[target])
         self.live_position.setText("Current page" if target == len(self._live_history) else f"Saved page {target + 1}")
         self.update_live_controls()
         self.canvas.reset_view()
@@ -1407,6 +1490,7 @@ class HuionNoteWindow(QMainWindow):
             return
         if self._history_index < len(self._live_history):
             self.canvas.set_samples(self._current_live, self._current_colors)
+            self.canvas.set_background(self._current_background)
             self._history_index = len(self._live_history)
         self._draft_dirty = True
         if not self.save_draft():

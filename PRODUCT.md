@@ -21,6 +21,7 @@ Huion Note X10 over Bluetooth on this Linux PC. Local notes must remain usable w
 - Live drafts are stored locally and restored after restart.
 - Notes keeps a normal paired X10 connection; only the Live notebook workspace may enable pen streaming.
 - Live ink colours belong to individual strokes and survive drafts, saved-page browsing and exports.
+- A live page may contain one imported image beneath the ink; it is recoverable, removable and embedded into visual exports without changing the source file.
 - Device clearing requires explicit confirmation; normal sync retains device originals.
 - Local page deletion uses recoverable desktop Trash and keeps device originals and live drafts.
 - Remaining X10 pages are an estimate from the last complete device sync, not local import totals or a live storage reading.

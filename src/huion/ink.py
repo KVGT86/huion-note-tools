@@ -1,5 +1,6 @@
 """Device-space ink geometry shared by drawing and exports; no UI dependencies."""
 from __future__ import annotations
+import base64
 import math
 import re
 from typing import Iterable
@@ -7,6 +8,7 @@ from typing import Iterable
 PAGE_WIDTH, PAGE_HEIGHT = 28200, 37400
 INK = "#25231F"
 Sample = tuple[float, float, float]
+Background = tuple[str, bytes, int, int]
 
 
 def validate_color(color: str) -> str:
@@ -28,6 +30,16 @@ def stroke_colors(count: int, colors: Iterable[str] | None = None) -> list[str]:
 
 def radius(pressure: float) -> float:
     return 12 + 32 * (min(8192, max(0, pressure)) / 8192) ** 0.65
+
+
+def fit_image_rect(width: int, height: int) -> tuple[float, float, float, float]:
+    """Contain an image on the notebook page without changing its aspect ratio."""
+    if width <= 0 or height <= 0:
+        raise ValueError("Image dimensions must be positive.")
+    scale = min(PAGE_WIDTH / width, PAGE_HEIGHT / height)
+    fitted_width, fitted_height = width * scale, height * scale
+    return ((PAGE_WIDTH - fitted_width) / 2, (PAGE_HEIGHT - fitted_height) / 2,
+            fitted_width, fitted_height)
 
 
 def outline(samples: Iterable[Sample]) -> list[tuple[float, float]]:
@@ -74,11 +86,22 @@ def outline(samples: Iterable[Sample]) -> list[tuple[float, float]]:
     return left + end_cap + list(reversed(right)) + start_cap
 
 
-def svg_document(strokes: Iterable[Iterable[Sample]], colors: Iterable[str] | None = None) -> str:
+def svg_document(strokes: Iterable[Iterable[Sample]], colors: Iterable[str] | None = None,
+                 background: Background | None = None) -> str:
     strokes = list(strokes)
     colors = stroke_colors(len(strokes), colors)
     lines = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{PAGE_WIDTH}" height="{PAGE_HEIGHT}" viewBox="0 0 {PAGE_WIDTH} {PAGE_HEIGHT}">',
              f'<rect width="{PAGE_WIDTH}" height="{PAGE_HEIGHT}" fill="white"/>']
+    if background:
+        mime_type, content, width, height = background
+        if mime_type not in {"image/jpeg", "image/png"}:
+            raise ValueError("Background must be a JPEG or PNG image.")
+        x, y, fitted_width, fitted_height = fit_image_rect(width, height)
+        encoded = base64.b64encode(content).decode("ascii")
+        lines.append(
+            f'<image x="{x:.3f}" y="{y:.3f}" width="{fitted_width:.3f}" height="{fitted_height:.3f}" '
+            f'href="data:{mime_type};base64,{encoded}" preserveAspectRatio="none"/>'
+        )
     for stroke, color in zip(strokes, colors):
         polygon = outline(stroke)
         if polygon:

@@ -109,6 +109,8 @@ One toolbar groups page navigation and paper guides on the left, save/new-page i
 
 A downloaded Lucide palette icon and visible colour name open a compact menu beside paper guides. Named Graphite, Blue, Burgundy and Green choices have native colour swatches; Custom colour opens Qt's picker. Colour is document content, not a new interface accent. It applies to future strokes only, persists with each stroke and never erases crossing ink. Live polygons use winding fill to match exported SVG nonzero fill.
 
+A downloaded Lucide image icon opens a compact Image menu beside ink colour. Choose image imports or replaces one orientation-corrected page background; Remove image affects only the draft, never the source file. The image is contained on white paper without distortion and always renders beneath guides and vector ink. At compact window widths, Ink, Image and Present become icon-only controls while preserving tooltips and accessible names.
+
 ### Status footer
 A full-width, hairline-separated Qt status bar anchors the shell. Minimum height is 56px, with 16px horizontal and 10px vertical outer layout margins. Status groups have additional 12–16px separation. Bluetooth state and reconnect sit on the left; operation results occupy the flexible middle. Live draft state, fit and zoom controls sit on the right. Persistent instructions move into tooltips; draft state reports only what has actually happened. Saved-page browsing is distinguished from the active draft.
 

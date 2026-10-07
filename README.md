@@ -12,6 +12,7 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 * **In-app reading and review**: Crisp vector handwriting preview, Markdown reading, and side-by-side transcript editing.
 * **Batch export**: SVG, PDF, high-resolution PNG, original JSON pen samples, and Markdown with companion sketches. Existing files are preserved.
 * **Live notebook sharing**: Smooth pressure-sensitive vector ink, zoom, pan, paper guides, saved pages and recoverable local drafts. F11 presents only the notebook; Escape restores controls.
+* **Image annotation**: Add a photo, scan or diagram beneath live ink, then save or export the combined page without changing the original image.
 * **Local transcription**: Line-segmented Microsoft TrOCR runs on this computer and is tuned for handwriting. Tesseract remains available only through the legacy CLI.
 * **Cloud transcription**: Explicitly selected Gemini transcription using a key configured in Settings. Only selected pages are sent. The REST integration needs no additional SDK.
 * **Device controls**: Connection and battery state, reconnect, persistent folder/address/PIN settings, and confirmed device clearing.
@@ -19,7 +20,7 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 
 The Tkinter annotation editor and tray implementation remain in the repository as legacy tools; they are not features of the default Qt workspace.
 
-## Desktop 1.4.1
+## Desktop 1.5.0
 
 Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Edit transcript. Each click toggles a page in the selection; Select all/Clear selection handles the full filtered list. Export and Transcribe operate on that selection.
 
@@ -40,6 +41,8 @@ Open **Live notebook** when sharing your writing. Save page adds the current pag
 The X10 stays in its normal paired mode while Notes is open. HuionNote enables live pen streaming only when Live notebook is open, then returns the device to paired mode when you leave that workspace.
 
 The palette control selects ink for new strokes: Graphite, Blue, Burgundy, Green or a custom opaque colour. Existing handwriting keeps its original colour, including a stroke already in progress. Colours are retained in drafts, saved pages and exports; raw coordinates and pressure samples are unchanged. Older monochrome drafts open as Graphite. Paper guides remain view-only.
+
+Use **Image → Choose image…** in Live notebook to annotate a JPEG, PNG, WebP, BMP or TIFF. HuionNote corrects its orientation, fits it on the page without distortion and keeps the original file unchanged. Replace or remove it from the same menu. Draft recovery retains the working image, while saved SVG, PNG and PDF pages embed the image beneath the vector ink.
 
 Shortcuts: Ctrl+F search, Ctrl+S save the current page/transcript, Ctrl+E export, Ctrl+N new live page, F11 present, Escape leave presentation. Ctrl+wheel zooms; dragging pans the page.
 
