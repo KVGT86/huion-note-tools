@@ -64,6 +64,45 @@ class HuionApplication:
         self.ink_color = INK
         self.live_background: str | None = None
 
+    def _user_config(self) -> dict:
+        config = load_config()
+        return config if isinstance(config, dict) else {}
+
+    def _save_user_config(self, config: dict) -> None:
+        save_config(config)
+        from huion.ble import CONFIG_PATH
+        os.chmod(CONFIG_PATH, 0o600)
+
+    @property
+    def auto_sync(self) -> bool:
+        return bool(self._user_config().get("auto_sync", False))
+
+    def set_auto_sync(self, enabled: bool) -> None:
+        config = self._user_config()
+        config["auto_sync"] = bool(enabled)
+        self._save_user_config(config)
+
+    def note_metadata(self, note: Note) -> dict:
+        """Return user-owned library metadata keyed by the stable absolute SVG path."""
+        data = self._user_config().get("note_metadata", {})
+        value = data.get(str(Path(note.svg_path).absolute()), {}) if isinstance(data, dict) else {}
+        return value if isinstance(value, dict) else {}
+
+    def update_note_metadata(self, note: Note, *, title: str, tags: list[str], collection: str,
+                             favourite: bool, reviewed: bool | None = None) -> dict:
+        clean_title = " ".join(title.split())[:120]
+        clean_tags = list(dict.fromkeys(" ".join(tag.split())[:40] for tag in tags if tag.strip()))[:12]
+        clean_collection = " ".join(collection.split())[:60]
+        config = self._user_config()
+        all_metadata = config.setdefault("note_metadata", {})
+        key = str(Path(note.svg_path).absolute())
+        previous = all_metadata.get(key, {}) if isinstance(all_metadata.get(key), dict) else {}
+        value = {"title": clean_title, "tags": clean_tags, "collection": clean_collection,
+                 "favourite": bool(favourite), "reviewed": previous.get("reviewed", False) if reviewed is None else bool(reviewed)}
+        all_metadata[key] = value
+        self._save_user_config(config)
+        return value
+
     @property
     def mac_address(self) -> str:
         return load_config().get("mac_address") or ""
@@ -107,7 +146,9 @@ class HuionApplication:
     def device_snapshot(self) -> DeviceSnapshot:
         thread = getattr(self.bridge, "_stream_thread", None)
         alive = bool(thread and thread.is_alive())
-        address = getattr(getattr(self.bridge, "_current_conn", None), "mac", None) or self.mac_address
+        address = getattr(getattr(self.bridge, "_current_conn", None), "mac", None)
+        if not isinstance(address, str) or not address:
+            address = self.mac_address
         storage = self._storage if isinstance(self._storage, dict) else {}
         count = storage.get("stored_pages")
         valid = (isinstance(count, int) and not isinstance(count, bool) and count >= 0
@@ -229,6 +270,37 @@ class HuionApplication:
         os.replace(tmp.name, target)
         self.live_background = str(target)
         return self.live_background
+
+    def adjust_live_background(self, *, rotate: int = 0, crop_to_page: bool = False,
+                               opacity: int = 100, position: str = "centre") -> str:
+        """Adjust only HuionNote's working copy; the imported source is never changed."""
+        if not self.live_background or not Path(self.live_background).is_file():
+            raise ValueError("Add a page image before adjusting it.")
+        from PIL import Image, ImageOps
+        path = Path(self.live_background)
+        with Image.open(path) as opened:
+            image = ImageOps.exif_transpose(opened).convert("RGB")
+            if rotate:
+                image = image.rotate(-rotate, expand=True, resample=Image.Resampling.BICUBIC)
+            if crop_to_page:
+                if position not in {"centre", "left", "right", "top", "bottom"}:
+                    raise ValueError("Choose a valid crop position.")
+                page_ratio = 28200 / 37400
+                ratio = image.width / image.height
+                if ratio > page_ratio:
+                    width = round(image.height * page_ratio)
+                    left = 0 if position == "left" else image.width - width if position == "right" else (image.width - width) // 2
+                    image = image.crop((left, 0, left + width, image.height))
+                elif ratio < page_ratio:
+                    height = round(image.width / page_ratio)
+                    top = 0 if position == "top" else image.height - height if position == "bottom" else (image.height - height) // 2
+                    image = image.crop((0, top, image.width, top + height))
+            opacity = max(10, min(100, int(opacity)))
+            if opacity < 100:
+                image = Image.blend(Image.new("RGB", image.size, "white"), image, opacity / 100)
+            image.thumbnail((2820, 3740), Image.Resampling.LANCZOS)
+            image.save(path, format="JPEG", quality=92, optimize=True)
+        return str(path)
 
     def clear_live_background(self) -> None:
         if self.live_background:
@@ -364,6 +436,43 @@ class HuionApplication:
             except OSError:
                 logging.getLogger(__name__).warning("Storage estimate could not be saved; synced pages are safe.")
         return pages
+
+    def sync_and_free_space(self, progress=None) -> list[Any]:
+        """Save each page before the transport deletes that verified device page."""
+        pages = self.bridge.sync_offline_pages(
+            output_dir=self.output_directory,
+            mac=self.mac_address,
+            delete_after_export=True,
+            force_vectors=True,
+            progress=progress,
+        )
+        self._storage = {"address": self.mac_address.upper(), "stored_pages": 0,
+                         "checked_at": datetime.now().astimezone().strftime("%d %b %Y, %H:%M")}
+        config = self._user_config()
+        config["storage_estimate"] = self._storage
+        self._save_user_config(config)
+        return pages
+
+    def export_combined_pdf(self, notes: list[Note], destination: str, progress: Any = None) -> str:
+        """Render selected vector pages into one portable multi-page PDF."""
+        import cairosvg
+        from PIL import Image
+        if not notes:
+            raise ValueError("Select at least one page.")
+        images = []
+        for index, note in enumerate(notes):
+            image = Image.open(io.BytesIO(cairosvg.svg2png(url=note.svg_path, output_width=1410, output_height=1870))).convert("RGB")
+            images.append(image)
+            if progress:
+                progress(index + 1, len(notes))
+        target = Path(destination)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        candidate, suffix = target, 1
+        while candidate.exists():
+            candidate = target.with_name(f"{target.stem}_{suffix}{target.suffix}")
+            suffix += 1
+        images[0].save(candidate, "PDF", save_all=True, append_images=images[1:], resolution=150)
+        return str(candidate)
 
     def clear_device(self) -> None:
         from .ble_bridge import X10Device

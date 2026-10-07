@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import struct
+from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Set
 
 from .ble import BleDeviceConnection, HuionBleTransport, load_config
@@ -92,6 +93,15 @@ def points_to_strokes(points: List[PenPoint]) -> List[Stroke]:
     if len(curr) > 1:
         strokes.append(Stroke(points=list(curr), pen_type=PenType.BALLPOINT))
     return strokes
+
+
+def verify_export_artifacts(artifacts: ExportArtifacts) -> bool:
+    """Confirm every renderer-declared artifact exists and contains data."""
+    names = [name for name in (artifacts.svg_filename, artifacts.png_filename, artifacts.json_filename) if name]
+    return bool(names) and all(
+        (Path(artifacts.folder_path) / name).is_file() and (Path(artifacts.folder_path) / name).stat().st_size > 0
+        for name in names
+    )
 
 
 class SyncEngine:
@@ -247,6 +257,8 @@ class OfflineSyncManager:
                 log.info(f"Saved Page {page_num} ({len(strokes)} strokes) -> {artifacts.folder_path}/{saved_target}")
 
                 if delete_after_export:
+                    if not verify_export_artifacts(artifacts):
+                        raise RuntimeError("A transferred page could not be verified locally. It remains on the notebook.")
                     await self.transport.send(bytes([START, OP_DELETE_PAGE, 0x08, page_idx & 0xFF, (page_idx >> 8) & 0xFF, 0, 0, END]))
                     await asyncio.sleep(0.1)
 

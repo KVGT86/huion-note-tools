@@ -85,6 +85,36 @@ def test_storage_is_latest_complete_device_count_not_local_total(pipeline, tmp_o
     assert service.device_snapshot().stored_pages is None
 
 
+def test_sync_and_free_space_uses_verified_transport_and_updates_storage(pipeline, tmp_output, monkeypatch):
+    config_file = tmp_output / "config.json"
+    config = {"mac_address": "AA:BB:CC:DD:EE:FF"}
+    monkeypatch.setattr(application, "load_config", lambda: config.copy())
+    monkeypatch.setattr(application, "save_config", lambda value: (config.update(value), config_file.write_text("{}")))
+    monkeypatch.setattr("huion.ble.CONFIG_PATH", str(config_file))
+    bridge = MagicMock()
+    bridge.sync_offline_pages.return_value = [object(), object()]
+    service = HuionApplication(pipeline, bridge)
+    assert len(service.sync_and_free_space()) == 2
+    assert bridge.sync_offline_pages.call_args.kwargs["delete_after_export"] is True
+    assert service.device_snapshot().stored_pages == 0
+
+
+def test_note_metadata_is_search_safe_and_persistent(pipeline, tmp_output, monkeypatch):
+    config_file = tmp_output / "config.json"
+    config = {}
+    monkeypatch.setattr(application, "load_config", lambda: config.copy())
+    monkeypatch.setattr(application, "save_config", lambda value: (config.clear(), config.update(value), config_file.write_text("{}")))
+    monkeypatch.setattr("huion.ble.CONFIG_PATH", str(config_file))
+    service = HuionApplication(pipeline, MagicMock())
+    page = Path(service.save_live_page([[(1000, 1000, 3000)]]))
+    note = next(n for n in service.load_notes() if n.svg_path == str(page))
+    value = service.update_note_metadata(note, title="  Project   brief ", tags=["work", "work", " next  step "],
+                                         collection=" Client A ", favourite=True, reviewed=True)
+    assert value == {"title": "Project brief", "tags": ["work", "next step"], "collection": "Client A",
+                     "favourite": True, "reviewed": True}
+    assert service.note_metadata(note) == value
+
+
 def test_page_header_timeout_is_not_empty_storage():
     from huion.sync_engine import OfflineSyncManager
     from unittest.mock import AsyncMock

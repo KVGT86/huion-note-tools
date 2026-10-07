@@ -213,7 +213,7 @@ class DeviceBridge:
             OP_RETURN_OFFLINE_DATA, OP_GET_PAGE_PACKAGE, OP_DELETE_PAGE, OP_CLEAR_CACHE,
             OP_MAX_DATA, OP_SET_DISTANCE, OP_VERIFY_PWD, build_frame, verify_response, decode_packet,
             points_to_strokes, NotePage, HuionDevice, ConnectionState, PageSyncStatus,
-            MultiFormatRenderer, next_sync_folder
+            MultiFormatRenderer, next_sync_folder, verify_export_artifacts
         )
         import datetime
 
@@ -350,6 +350,8 @@ class DeviceBridge:
                     progress(len(pages_saved), 0)
 
                 if delete_after_export:
+                    if not verify_export_artifacts(artifacts):
+                        raise RuntimeError("A transferred page could not be verified locally. It remains on the notebook.")
                     await conn.write_cmd(bytes([START, OP_DELETE_PAGE, 0x08, page_idx & 0xFF, (page_idx >> 8) & 0xFF, 0, 0, END]))
                     await asyncio.sleep(0.1)
 

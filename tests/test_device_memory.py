@@ -5,8 +5,19 @@ Spec obligations covered:
   rule-success.ClearAllPages
 """
 import pytest
+from pathlib import Path
 
 from huion_note_pipeline.ble_bridge import X10Device, Page
+from huion.models import ExportArtifacts
+from huion.sync_engine import verify_export_artifacts
+
+
+def test_export_verification_requires_every_declared_file(tmp_path):
+    (tmp_path / "page.svg").write_text("<svg/>")
+    artifacts = ExportArtifacts(str(tmp_path), svg_filename="page.svg", json_filename="page.json")
+    assert not verify_export_artifacts(artifacts)
+    (tmp_path / "page.json").write_text("{}")
+    assert verify_export_artifacts(artifacts)
 
 
 class TestClearSyncedPages:

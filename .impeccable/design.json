@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-06T18:50:02Z",
+  "generatedAt": "2026-10-07T00:00:00Z",
   "title": "Design System: HuionNote",
   "extensions": {
     "typographyMeta": {
@@ -38,7 +38,7 @@
     {
       "name": "Notebook toolbar",
       "kind": "custom",
-      "description": "Single-row navigation, paper controls, Lucide ink-colour and image-background menus on the left; icon-led save, new-page and presentation actions on the right. Ink, Image and Present collapse to accessible icons at compact widths.",
+      "description": "Single-row page navigation, paper, ink and working-copy image controls on the left; undo, redo, eraser, highlighter and temporary pointer in the middle; save, new-page and presentation actions on the right. The page label hides and Ink, Image and Present collapse to accessible icons at compact widths.",
       "html": "<button class=\"ds-tool\" aria-label=\"Fit entire page\" title=\"Fit entire page\"><img src=\"src/huion_note_pipeline/gui/icons/lucide/maximize.svg\" width=\"18\" height=\"18\" alt=\"\"></button>",
       "css": ".ds-tool{min-width:32px;min-height:32px;padding:6px;background:transparent;color:#25231F;border:1px solid transparent;border-radius:5px}.ds-tool:hover{background:#E4E1DA}.ds-tool:focus-visible{outline:1px solid #786995}.ds-tool:active{background:#E4DEF0}"
     },
@@ -69,9 +69,16 @@
       "name": "Navigation",
       "kind": "nav",
       "refersTo": "navigation-active",
-      "description": "Notes-first destinations.",
+      "description": "Notes-first navigation across Notes, Live notebook and Device workspaces.",
       "html": "<button class=\"ds-nav\">Notes</button>",
       "css": ".ds-nav{background:#25231F;color:#FFF;border:1px solid transparent;border-radius:6px;padding:10px 12px;font:600 14px system-ui}.ds-nav:focus-visible{outline:2px solid #786995}"
+    },
+    {
+      "name": "Device action group",
+      "kind": "custom",
+      "description": "Hairline group that pairs plain-language transfer consequences with a right-aligned action; safe sync leads in graphite while destructive memory clearing is isolated in a final red treatment.",
+      "html": "<fieldset class=\"ds-device-group\"><legend>Transfer pages</legend><div><span><strong>Sync notebook</strong><small>Copy new pages and keep the originals.</small></span><button>Sync notebook</button></div></fieldset>",
+      "css": ".ds-device-group{border:1px solid #D6D3CC;border-radius:6px;padding:18px 16px 16px;color:#25231F;font:14px system-ui}.ds-device-group legend{padding:0 5px;font-weight:600}.ds-device-group div{display:flex;align-items:center;gap:24px}.ds-device-group span{display:grid;gap:4px;flex:1}.ds-device-group small{color:#625F59}.ds-device-group button{background:#25231F;color:#FFF;border:1px solid #25231F;border-radius:6px;padding:8px 14px}.ds-device-group button:hover{background:#11100E}.ds-device-group button:focus-visible{outline:2px solid #786995}"
     },
     {
       "name": "Search field",
@@ -83,7 +90,7 @@
     {
       "name": "Document row",
       "kind": "custom",
-      "description": "Inset click-to-toggle multi-select row with title, date and transcript state; selection stays clear of the list boundary and scrollbar.",
+      "description": "Inset click-to-toggle multi-select row with user title or favourite star, date and explicit transcript-review state; selection stays clear of the list boundary and scrollbar.",
       "html": "<div class=\"ds-row\" tabindex=\"0\">Meeting notes<br><small>06 Oct 2026 · Not transcribed</small></div>",
       "css": ".ds-row{background:#FFF;color:#25231F;border-radius:6px;padding:13px 12px;font:600 14px system-ui}.ds-row small{color:#625F59;font:12px system-ui}.ds-row:hover{background:#F2F1ED}.ds-row:focus-visible{outline:1px solid #786995;background:#E4DEF0}"
     }

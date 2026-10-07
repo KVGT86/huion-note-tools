@@ -104,7 +104,7 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     from PySide6.QtGui import QPalette
     assert window.search.palette().color(QPalette.ColorRole.PlaceholderText).name() == "#625f59"
 
-    assert window.pages.count() == 2
+    assert window.pages.count() == 3
     assert window.pages.currentIndex() == 0
     assert window.page_title.text() == "Notes"
     assert window.service.bridge.modes == ["notes"]
@@ -123,6 +123,7 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     assert window.statusbar.isAncestorOf(window.live_view_controls)
     assert window.statusbar.isAncestorOf(window.device_label)
     assert window.live_hint.text() == "Blank page"
+    assert not window.undo_button.isEnabled() and not window.redo_button.isEnabled()
     assert not window.previous_page_button.isEnabled()
     assert not window.next_page_button.isEnabled()
     from PySide6.QtWidgets import QToolButton
@@ -136,6 +137,11 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     window.canvas.add_point(SimpleNamespace(x=5000, y=6000, pressure=6000, touch=True))
     window.canvas.add_point(SimpleNamespace(x=5000, y=6000, pressure=0, touch=False))
     first = window.canvas.samples()
+    assert window.undo_button.isEnabled()
+    window.undo_button.click()
+    assert window.redo_button.isEnabled()
+    window.redo_button.click()
+    assert window.canvas.samples() == first
     assert window.live_hint.text() == "Unsaved changes"
     def fail_draft(*args):
         raise OSError("Notes folder is unavailable")
@@ -193,6 +199,13 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     window.resize(860, 580)
     window._show_page(0)
     assert window.service.bridge.modes[-1] == "notes"
+    window._show_page(2)
+    assert window.page_title.text() == "Device"
+    assert window.service.bridge.modes[-1] == "notes"
+    assert window.device_sync_button.text() == "Sync notebook"
+    assert "free space" in window.sync_clear_button.text()
+    assert window.sync_button.isHidden()
+    window._show_page(0)
     window.note_list.setCurrentRow(0)
     assert window.delete_button.isEnabled()
     window.select_all_button.click()
@@ -288,4 +301,21 @@ def test_live_overlap_is_solid_for_active_and_completed_strokes():
     canvas.add_point(SimpleNamespace(pressure=0, touch=False))
     assert canvas.colors() == ["#2457A7", "#912D47"]
     assert 'fill="#2457A7"' in canvas.to_svg() and 'fill="#912D47"' in canvas.to_svg()
+    canvas.undo()
+    assert len(canvas.samples()) == 1
+    canvas.redo()
+    assert len(canvas.samples()) == 2
+    canvas.set_tool("highlighter")
+    canvas.add_point(SimpleNamespace(x=5000, y=5000, pressure=4000, touch=True))
+    canvas.add_point(SimpleNamespace(pressure=0, touch=False))
+    assert canvas.colors()[-1] == "#D7B43C"
+    canvas.set_tool("eraser")
+    canvas.add_point(SimpleNamespace(x=5000, y=5000, pressure=4000, touch=True))
+    canvas.add_point(SimpleNamespace(x=5000, y=5000, pressure=0, touch=False))
+    assert "#D7B43C" not in canvas.colors()
+    before = list(canvas.samples())
+    canvas.set_tool("pointer")
+    canvas.add_point(SimpleNamespace(x=6000, y=6000, pressure=4000, touch=True))
+    canvas.add_point(SimpleNamespace(x=6000, y=6000, pressure=0, touch=False))
+    assert canvas.samples() == before
     canvas.close()

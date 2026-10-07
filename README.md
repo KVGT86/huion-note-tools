@@ -13,6 +13,9 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 * **Batch export**: SVG, PDF, high-resolution PNG, original JSON pen samples, and Markdown with companion sketches. Existing files are preserved.
 * **Live notebook sharing**: Smooth pressure-sensitive vector ink, zoom, pan, paper guides, saved pages and recoverable local drafts. F11 presents only the notebook; Escape restores controls.
 * **Image annotation**: Add a photo, scan or diagram beneath live ink, then save or export the combined page without changing the original image.
+* **Notebook management**: A dedicated Device workspace provides safe sync, verified sync-and-free-space, optional connection auto-sync, storage context and a separated erase action.
+* **Organised library**: Rename, tag, favourite and collect pages; search includes those details and transcripts remain queued until reviewed.
+* **Complete live toolkit**: Undo/redo, stroke eraser, highlighter, presentation pointer, paper templates and adjustable image backgrounds.
 * **Local transcription**: Line-segmented Microsoft TrOCR runs on this computer and is tuned for handwriting. Tesseract remains available only through the legacy CLI.
 * **Cloud transcription**: Explicitly selected Gemini transcription using a key configured in Settings. Only selected pages are sent. The REST integration needs no additional SDK.
 * **Device controls**: Connection and battery state, reconnect, persistent folder/address/PIN settings, and confirmed device clearing.
@@ -20,7 +23,7 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 
 The Tkinter annotation editor and tray implementation remain in the repository as legacy tools; they are not features of the default Qt workspace.
 
-## Desktop 1.5.0
+## Desktop 1.6.0
 
 Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Edit transcript. Each click toggles a page in the selection; Select all/Clear selection handles the full filtered list. Export and Transcribe operate on that selection.
 
@@ -45,6 +48,8 @@ The palette control selects ink for new strokes: Graphite, Blue, Burgundy, Green
 Use **Image → Choose image…** in Live notebook to annotate a JPEG, PNG, WebP, BMP or TIFF. HuionNote corrects its orientation, fits it on the page without distortion and keeps the original file unchanged. Replace or remove it from the same menu. Draft recovery retains the working image, while saved SVG, PNG and PDF pages embed the image beneath the vector ink.
 
 Shortcuts: Ctrl+F search, Ctrl+S save the current page/transcript, Ctrl+E export, Ctrl+N new live page, F11 present, Escape leave presentation. Ctrl+wheel zooms; dragging pans the page.
+
+Live tool shortcuts: Ctrl+Z undo, Ctrl+Shift+Z redo, Ctrl+Shift+E eraser, Ctrl+Shift+H highlighter and Ctrl+Shift+P presentation pointer. Use Device for notebook storage operations; automatic sync only copies and never erases pages.
 
 Versions follow Semantic Versioning, commits use Conventional Commits, and releases are recorded in [CHANGELOG.md](CHANGELOG.md). See [DESIGN.md](DESIGN.md) for the maintained style guide.
 

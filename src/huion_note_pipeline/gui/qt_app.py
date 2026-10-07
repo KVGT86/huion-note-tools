@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QLineEdit, QComboBox, QTextEdit, QTextBrowser, QTabWidget,
     QDialog, QDialogButtonBox, QFormLayout, QFileDialog, QMessageBox, QCheckBox,
     QProgressBar, QMenu, QSizePolicy, QStyledItemDelegate, QRadioButton, QListView, QToolButton, QStatusBar, QColorDialog,
+    QInputDialog, QGroupBox,
 )
 
 from huion.ink import PAGE_WIDTH, PAGE_HEIGHT, outline, svg_document, stroke_colors, validate_color, fit_image_rect
@@ -54,6 +55,9 @@ QLabel#title { font-size: 21px; font-weight: 600; }
 QLabel#brand { font-size: 17px; font-weight: 600; }
 QLabel#muted { color: #625F59; font-size: 13px; }
 QLabel#empty { color: #625F59; padding: 24px; background: #F2F1ED; }
+QLabel#metric { font-size: 28px; font-weight: 600; }
+QGroupBox { border: 1px solid #D6D3CC; border-radius: 6px; margin-top: 12px; padding: 18px 16px 16px; font-weight: 600; }
+QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; }
 QPushButton { border: 1px solid #D6D3CC; border-radius: 6px; padding: 8px 12px; background: #FFFFFF; }
 QPushButton:hover { background: #EEECE6; border-color: #A6A198; }
 QPushButton:pressed { background: #DEDAD2; }
@@ -141,6 +145,9 @@ ICON_NAMES = {
     "next": "chevron-right", "reconnect": "refresh-cw", "activity": "list",
     "settings": "settings", "bluetooth": "bluetooth", "delete": "trash", "color": "palette",
     "image": "image-plus",
+    "device": "hard-drive-download", "undo": "undo-2", "redo": "redo-2", "eraser": "eraser",
+    "highlighter": "highlighter", "organize": "tags", "rotate": "rotate-cw",
+    "crop": "crop", "opacity": "contrast", "pointer": "mouse-pointer-2",
 }
 
 
@@ -309,6 +316,10 @@ class LiveCanvas(PaperView):
         self._active_color = INK
         self._background = QImage()
         self._dirty = False
+        self._redo = []
+        self.tool = "ink"
+        self._pointer = None
+        self._erasing = False
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._paint_pending)
         self.timer.start(16)
@@ -324,15 +335,51 @@ class LiveCanvas(PaperView):
     def colors(self) -> list[str]:
         return list(self._colors) + ([self._active_color] if self._active else [])
 
+    def can_undo(self) -> bool:
+        return bool(self._active or self._strokes)
+
+    def can_redo(self) -> bool:
+        return bool(self._redo)
+
     def set_ink_color(self, color: str) -> None:
         self.ink_color = validate_color(color)
         self.changed.emit()
+
+    def set_tool(self, tool: str) -> None:
+        if tool not in {"ink", "highlighter", "eraser", "pointer"}:
+            raise ValueError(f"Unsupported live tool: {tool}")
+        self.tool = tool
+        self._active = []
+        self._pointer = None
+        self.update()
+
+    def undo(self) -> None:
+        if self._active:
+            self._active = []
+        elif self._strokes:
+            self._redo.append((self._strokes.pop(), self._colors.pop()))
+            self._geometry.pop()
+        else:
+            return
+        self.changed.emit()
+        self.update()
+
+    def redo(self) -> None:
+        if not self._redo:
+            return
+        stroke, color = self._redo.pop()
+        self._strokes.append(stroke)
+        self._colors.append(color)
+        self._geometry.append(QPolygonF([QPointF(x, y) for x, y in outline(stroke)]))
+        self.changed.emit()
+        self.update()
 
     def set_samples(self, strokes: list, colors: list[str] | None = None) -> None:
         colors = stroke_colors(len(strokes), colors)
         self._strokes = [[tuple(p) for p in s] for s in strokes if s]
         self._colors = [c for s, c in zip(strokes, colors) if s]
         self._active = []
+        self._redo = []
         self._geometry = [QPolygonF([QPointF(x, y) for x, y in outline(s)]) for s in self._strokes]
         self.update()
 
@@ -351,9 +398,29 @@ class LiveCanvas(PaperView):
 
     def add_point(self, point: Any) -> None:
         touching = getattr(point, "touch", getattr(point, "pressure", 0) > 0)
+        if self.tool == "pointer":
+            self._pointer = QPointF(float(point.x), float(point.y)) if touching else None
+            self._dirty = True
+            return
+        if self.tool == "eraser":
+            if touching and not self._erasing and self._strokes:
+                x, y = float(point.x), float(point.y)
+                index, distance = min(
+                    ((i, min((px - x) ** 2 + (py - y) ** 2 for px, py, _ in stroke))
+                     for i, stroke in enumerate(self._strokes)), key=lambda value: value[1])
+                if distance <= 1600 ** 2:
+                    self._redo.append((self._strokes.pop(index), self._colors.pop(index)))
+                    self._geometry.pop(index)
+                    self.changed.emit()
+                self._erasing = True
+            elif not touching:
+                self._erasing = False
+            self._dirty = True
+            return
         if touching and getattr(point, "pressure", 0) > 0:
             if not self._active:
-                self._active_color = self.ink_color
+                self._active_color = "#D7B43C" if self.tool == "highlighter" else self.ink_color
+                self._redo = []
             self._active.append((float(point.x), float(point.y), int(point.pressure)))
         elif self._active:
             self._strokes.append(self._active)
@@ -390,11 +457,14 @@ class LiveCanvas(PaperView):
             painter.setPen(QPen(QColor("#D4D1CA"), 35))
             step = 1800
             for y in range(step, PAGE_HEIGHT, step):
-                if self.paper_style == "Ruled":
+                if self.paper_style in {"Ruled", "Grid"}:
                     painter.drawLine(QPointF(0, y), QPointF(PAGE_WIDTH, y))
                 else:
                     for x in range(step, PAGE_WIDTH, step):
                         painter.drawPoint(QPointF(x, y))
+            if self.paper_style == "Grid":
+                for x in range(step, PAGE_WIDTH, step):
+                    painter.drawLine(QPointF(x, 0), QPointF(x, PAGE_HEIGHT))
         painter.setPen(Qt.PenStyle.NoPen)
         for polygon, color in zip(self._geometry, self._colors):
             painter.setBrush(QColor(color))
@@ -403,6 +473,9 @@ class LiveCanvas(PaperView):
         if self._active:
             painter.setBrush(QColor(self._active_color))
             painter.drawPolygon(QPolygonF([QPointF(x, y) for x, y in outline(self._active)]), Qt.FillRule.WindingFill)
+        if self._pointer is not None:
+            painter.setBrush(QColor("#912D47"))
+            painter.drawEllipse(self._pointer, 180, 180)
         painter.restore()
 
 
@@ -523,6 +596,7 @@ class HuionNoteWindow(QMainWindow):
         self._selected_note = None
         self._editor_dirty = False
         self._device_mode = None
+        self._last_connected = False
         self.setWindowTitle("HuionNote")
         self.resize(1280, 820)
         self.setMinimumSize(860, 580)
@@ -562,6 +636,10 @@ class HuionNoteWindow(QMainWindow):
             ("F11", self.toggle_presentation), ("Escape", self.leave_presentation),
             ("Ctrl+F", self.focus_search), ("Ctrl+S", self.save_current),
             ("Ctrl+E", self.export_selected), ("Ctrl+N", self.new_page),
+            ("Ctrl+Z", self.canvas_undo), ("Ctrl+Shift+Z", self.canvas_redo),
+            ("Ctrl+Shift+E", lambda: self.set_live_tool("eraser")),
+            ("Ctrl+Shift+H", lambda: self.set_live_tool("highlighter")),
+            ("Ctrl+Shift+P", lambda: self.set_live_tool("pointer")),
         ):
             key = QShortcut(QKeySequence(shortcut), self)
             key.activated.connect(callback)
@@ -586,7 +664,7 @@ class HuionNoteWindow(QMainWindow):
         side.addLayout(brand)
         side.addSpacing(28)
         self.nav = []
-        for i, title in enumerate(("Notes", "Live notebook")):
+        for i, title in enumerate(("Notes", "Live notebook", "Device")):
             item = button(title, lambda checked=False, n=i: self._show_page(n), role="nav")
             item.setCheckable(True)
             side.addWidget(item)
@@ -621,6 +699,7 @@ class HuionNoteWindow(QMainWindow):
         self.pages = QStackedWidget()
         self.pages.addWidget(self.library_page())
         self.pages.addWidget(self.live_page())
+        self.pages.addWidget(self.device_page())
         column.addWidget(self.pages, 1)
         self.activity = QTextEdit()
         self.activity.setReadOnly(True)
@@ -668,12 +747,12 @@ class HuionNoteWindow(QMainWindow):
         layout.setContentsMargins(24, 18, 24, 16)
         controls = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search titles and transcripts")
+        self.search.setPlaceholderText("Search pages, tags and transcripts")
         self.search.setClearButtonEnabled(True)
         self.search.setAccessibleName("Search notes")
         self.search.textChanged.connect(self.refresh_notes)
         controls.addWidget(self.search, 1)
-        self.filter = combo_box(["All pages", "Not transcribed", "Transcribed", "Transcription failed"],
+        self.filter = combo_box(["All pages", "Not transcribed", "Transcribed", "Transcription failed", "Favourites", "Needs review"],
                                 "Filter pages by transcript status")
         self.filter.currentIndexChanged.connect(self.refresh_notes)
         controls.addWidget(self.filter)
@@ -712,8 +791,10 @@ class HuionNoteWindow(QMainWindow):
         self.export_button = button("Export…", self.export_selected)
         self.transcribe_button = button("Transcribe…", self.transcribe_selected)
         self.delete_button = tool_button("delete", "Delete selected pages…", self.delete_selected)
+        self.organize_button = tool_button("organize", "Organise selected page", self.organize_selected)
         actions.addWidget(self.export_button)
         actions.addWidget(self.transcribe_button)
+        actions.addWidget(self.organize_button)
         actions.addWidget(self.delete_button)
         list_layout.addLayout(actions)
         self.splitter.addWidget(left)
@@ -755,7 +836,13 @@ class HuionNoteWindow(QMainWindow):
         review_layout.addWidget(self.review_splitter, 1)
         self.save_transcript_button = button("Save changes", self.save_transcript)
         self.save_transcript_button.setEnabled(False)
-        review_layout.addWidget(self.save_transcript_button, alignment=Qt.AlignmentFlag.AlignRight)
+        review_actions = QHBoxLayout()
+        self.review_button = button("Mark reviewed", self.mark_reviewed)
+        self.review_button.setEnabled(False)
+        review_actions.addStretch()
+        review_actions.addWidget(self.review_button)
+        review_actions.addWidget(self.save_transcript_button)
+        review_layout.addLayout(review_actions)
         self.detail_tabs.addTab(review, "Edit transcript")
         self.detail_tabs.currentChanged.connect(self.active_preview_changed)
         detail_layout.addWidget(self.detail_tabs, 1)
@@ -777,7 +864,7 @@ class HuionNoteWindow(QMainWindow):
         self.live_toolbar = QWidget()
         tools = QHBoxLayout(self.live_toolbar)
         tools.setContentsMargins(0, 0, 0, 0)
-        tools.setSpacing(8)
+        tools.setSpacing(4)
         self.live_position = label("Current page", "muted")
         self.previous_page_button = tool_button("previous", "Previous saved page", lambda: self.browse_live(-1))
         self.next_page_button = tool_button("next", "Next page", lambda: self.browse_live(1))
@@ -785,7 +872,7 @@ class HuionNoteWindow(QMainWindow):
         tools.addWidget(self.live_position)
         tools.addWidget(self.next_page_button)
         tools.addWidget(tool_divider())
-        self.paper_choice = combo_box(["Plain", "Ruled", "Dotted"], "Paper guides")
+        self.paper_choice = combo_box(["Plain", "Ruled", "Grid", "Dotted"], "Paper guides")
         self.paper_choice.setObjectName("paperChoice")
         self.paper_choice.setToolTip("Paper guides are for viewing only; exported pages stay plain.")
         self.paper_choice.currentTextChanged.connect(self.change_paper)
@@ -811,10 +898,27 @@ class HuionNoteWindow(QMainWindow):
         self.image_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.image_menu = QMenu(self)
         self.image_menu.addAction(ui_icon("image"), "Choose image…", self.choose_live_image)
+        self.image_menu.addAction(ui_icon("rotate"), "Rotate 90°", lambda: self.adjust_live_image(rotate=90))
+        self.image_menu.addAction(ui_icon("crop"), "Crop and position…", self.crop_live_image)
+        self.image_menu.addAction(ui_icon("opacity"), "Adjust opacity…", self.adjust_live_opacity)
         self.remove_image_action = self.image_menu.addAction(ui_icon("delete"), "Remove image", self.remove_live_image)
         self.remove_image_action.setEnabled(False)
         self.image_button.setMenu(self.image_menu)
         tools.addWidget(self.image_button)
+        tools.addWidget(tool_divider())
+        self.undo_button = tool_button("undo", "Undo last stroke", self.canvas_undo)
+        self.redo_button = tool_button("redo", "Redo stroke", self.canvas_redo)
+        tools.addWidget(self.undo_button)
+        tools.addWidget(self.redo_button)
+        self.eraser_button = tool_button("eraser", "Erase strokes", lambda: self.set_live_tool("eraser"))
+        self.eraser_button.setCheckable(True)
+        self.highlighter_button = tool_button("highlighter", "Highlighter", lambda: self.set_live_tool("highlighter"))
+        self.highlighter_button.setCheckable(True)
+        self.pointer_button = tool_button("pointer", "Presentation pointer", lambda: self.set_live_tool("pointer"))
+        self.pointer_button.setCheckable(True)
+        tools.addWidget(self.eraser_button)
+        tools.addWidget(self.highlighter_button)
+        tools.addWidget(self.pointer_button)
         tools.addStretch()
         tools.addWidget(tool_button("save", "Save page to Notes (Ctrl+S)", self.save_live))
         tools.addWidget(tool_button("new", "Save and start a new page (Ctrl+N)", self.new_page))
@@ -825,6 +929,77 @@ class HuionNoteWindow(QMainWindow):
         self.canvas = LiveCanvas()
         layout.addWidget(self.canvas, 1)
         self.canvas.setToolTip("Ctrl+scroll to zoom. Drag to pan.")
+        return page
+
+    def device_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(18)
+        intro = label("Manage what stays on your notebook and what is safely copied to this computer.", "muted")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        status = QGroupBox("Notebook status")
+        status_layout = QHBoxLayout(status)
+        self.device_state_large = label("Connecting…", "title")
+        self.device_storage_large = label("Storage unknown", "metric")
+        self.device_last_sync = label("Sync to estimate remaining pages.", "muted")
+        storage_column = QVBoxLayout()
+        storage_column.addWidget(self.device_storage_large)
+        storage_column.addWidget(self.device_last_sync)
+        status_layout.addWidget(self.device_state_large)
+        status_layout.addStretch()
+        status_layout.addLayout(storage_column)
+        layout.addWidget(status)
+
+        transfer = QGroupBox("Transfer pages")
+        transfer_layout = QVBoxLayout(transfer)
+        safe_row = QHBoxLayout()
+        safe_copy = QVBoxLayout()
+        safe_copy.addWidget(label("Sync notebook", "brand"))
+        safe_text = label("Copy new pages to Notes and keep the originals on the X10.", "muted")
+        safe_text.setWordWrap(True)
+        safe_copy.addWidget(safe_text)
+        safe_row.addLayout(safe_copy, 1)
+        self.device_sync_button = button("Sync notebook", self.sync_now, True)
+        safe_row.addWidget(self.device_sync_button)
+        transfer_layout.addLayout(safe_row)
+        transfer_layout.addSpacing(12)
+        free_row = QHBoxLayout()
+        free_copy = QVBoxLayout()
+        free_copy.addWidget(label("Sync & free space", "brand"))
+        free_text = label("Save each page locally, verify it, then remove that transferred page from the X10.", "muted")
+        free_text.setWordWrap(True)
+        free_copy.addWidget(free_text)
+        free_row.addLayout(free_copy, 1)
+        self.sync_clear_button = button("Sync and free space…", self.confirm_sync_and_clear)
+        free_row.addWidget(self.sync_clear_button)
+        transfer_layout.addLayout(free_row)
+        self.auto_sync_check = QCheckBox("Automatically sync when the notebook connects")
+        self.auto_sync_check.setChecked(self.service.auto_sync)
+        self.auto_sync_check.setToolTip("Automatic sync only copies pages. It never removes pages from the notebook.")
+        self.auto_sync_check.toggled.connect(self.service.set_auto_sync)
+        transfer_layout.addWidget(self.auto_sync_check)
+        layout.addWidget(transfer)
+
+        history = QGroupBox("Recent activity")
+        history_layout = QVBoxLayout(history)
+        self.sync_history = QTextBrowser()
+        self.sync_history.setMaximumHeight(130)
+        self.sync_history.setPlainText("No sync activity in this session.")
+        history_layout.addWidget(self.sync_history)
+        layout.addWidget(history)
+
+        danger = QGroupBox("Erase notebook memory")
+        danger_layout = QHBoxLayout(danger)
+        danger_copy = label("Permanently remove every stored page. Pages already saved on this computer are kept.", "muted")
+        danger_copy.setWordWrap(True)
+        danger_layout.addWidget(danger_copy, 1)
+        self.erase_device_button = button("Erase notebook memory…", self.clear_device, role="danger")
+        danger_layout.addWidget(self.erase_device_button)
+        layout.addWidget(danger)
+        layout.addStretch()
         return page
 
     def update_ink_menu(self) -> None:
@@ -864,6 +1039,28 @@ class HuionNoteWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.warning(self, "Image could not be added", str(exc))
 
+    def adjust_live_image(self, *, rotate: int = 0, crop: bool = False, opacity: int = 100,
+                          position: str = "centre") -> None:
+        try:
+            path = self.service.adjust_live_background(rotate=rotate, crop_to_page=crop, opacity=opacity, position=position)
+            self.canvas.set_background(path)
+            self.live_changed()
+            self.save_draft()
+            self.log("Page image updated. The original file is unchanged.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Image could not be adjusted", str(exc))
+
+    def adjust_live_opacity(self) -> None:
+        value, accepted = QInputDialog.getInt(self, "Image opacity", "Opacity", 70, 10, 100, 5)
+        if accepted:
+            self.adjust_live_image(opacity=value)
+
+    def crop_live_image(self) -> None:
+        choice, accepted = QInputDialog.getItem(
+            self, "Crop and position", "Keep this part of the image", ["Centre", "Left", "Right", "Top", "Bottom"], 0, False)
+        if accepted:
+            self.adjust_live_image(crop=True, position=choice.casefold())
+
     def remove_live_image(self) -> None:
         if self._history_index < len(self._live_history):
             self.browse_live(len(self._live_history) - self._history_index)
@@ -877,14 +1074,33 @@ class HuionNoteWindow(QMainWindow):
         self.canvas.paper_style = style
         self.canvas.update()
 
+    def set_live_tool(self, tool: str) -> None:
+        if self.canvas.tool == tool:
+            tool = "ink"
+        self.canvas.set_tool(tool)
+        self.eraser_button.setChecked(tool == "eraser")
+        self.highlighter_button.setChecked(tool == "highlighter")
+        self.pointer_button.setChecked(tool == "pointer")
+        self.live_hint.setText({"ink": "Ink", "eraser": "Eraser", "highlighter": "Highlighter",
+                                "pointer": "Pointer"}[tool])
+
+    def canvas_undo(self) -> None:
+        if self._history_index == len(self._live_history):
+            self.canvas.undo()
+
+    def canvas_redo(self) -> None:
+        if self._history_index == len(self._live_history):
+            self.canvas.redo()
+
     def _show_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)
-        self.page_title.setText("Notes" if index == 0 else "Live notebook")
+        self.page_title.setText(("Notes", "Live notebook", "Device")[index])
         for i, nav in enumerate(self.nav):
             nav.setChecked(i == index)
         self.live_hint.setVisible(index == 1)
         self.live_view_controls.setVisible(index == 1)
-        mode = "notes" if index == 0 else "tablet"
+        self.sync_button.setVisible(index != 2)
+        mode = "tablet" if index == 1 else "notes"
         if mode != self._device_mode:
             self._device_mode = mode
             self.service.start_notes() if mode == "notes" else self.service.start_stream()
@@ -923,6 +1139,19 @@ class HuionNoteWindow(QMainWindow):
                 f"Estimated from {snapshot.stored_pages} stored pages at the last complete sync ({snapshot.storage_checked_at}). "
                 "Huion specifies up to 50 pages, not a byte-level capacity. New writing or changes in another app can change this. "
                 "Syncing or deleting local files does not free notebook memory.")
+        if hasattr(self, "device_state_large"):
+            self.device_state_large.setText(self.device_label.text())
+            if snapshot.stored_pages is None:
+                self.device_storage_large.setText("Storage unknown")
+                self.device_last_sync.setText("Sync to estimate remaining pages.")
+            else:
+                free = max(0, 50 - snapshot.stored_pages)
+                self.device_storage_large.setText(f"~{free} of 50 pages free")
+                self.device_last_sync.setText(f"Estimated from the last complete sync · {snapshot.storage_checked_at}")
+        connected = snapshot.connected is True
+        if connected and not self._last_connected and self.service.auto_sync and not self._busy and self.pages.currentIndex() != 1:
+            QTimer.singleShot(250, self.sync_now)
+        self._last_connected = connected
 
     def retry_connection(self) -> None:
         if not self._busy:
@@ -934,8 +1163,12 @@ class HuionNoteWindow(QMainWindow):
         try:
             self._all_notes = self.service.load_notes()
             self._search_text = {}
+            self._metadata = {}
             for note in self._all_notes:
-                text = Path(note.svg_path).stem.replace("_", " ")
+                metadata = self.service.note_metadata(note)
+                self._metadata[note.svg_path] = metadata
+                text = " ".join((metadata.get("title", ""), metadata.get("collection", ""),
+                                 " ".join(metadata.get("tags", [])), Path(note.svg_path).stem.replace("_", " ")))
                 if note.markdown_path and Path(note.markdown_path).exists():
                     text += " " + Path(note.markdown_path).read_text(encoding="utf-8")
                 self._search_text[note.svg_path] = text.casefold()
@@ -954,15 +1187,24 @@ class HuionNoteWindow(QMainWindow):
         for note in self._all_notes:
             if term and term not in self._search_text.get(note.svg_path, ""):
                 continue
+            metadata = self._metadata.get(note.svg_path, {})
             if filter_index == 1 and note.status not in (NoteStatus.SYNCED, NoteStatus.CONVERTING):
                 continue
             if filter_index == 2 and note.status != NoteStatus.CONVERTED:
                 continue
             if filter_index == 3 and note.status != NoteStatus.FAILED:
                 continue
-            title = Path(note.svg_path).stem.replace("_", " ").title()
+            if filter_index == 4 and not metadata.get("favourite"):
+                continue
+            if filter_index == 5 and (note.status != NoteStatus.CONVERTED or metadata.get("reviewed")):
+                continue
+            title = metadata.get("title") or Path(note.svg_path).stem.replace("_", " ").title()
             status = {NoteStatus.SYNCED: "Not transcribed", NoteStatus.CONVERTING: "Transcribing…",
                       NoteStatus.CONVERTED: "Transcribed", NoteStatus.FAILED: "Transcription failed"}[note.status]
+            if note.status == NoteStatus.CONVERTED and not metadata.get("reviewed"):
+                status = "Needs review"
+            if metadata.get("favourite"):
+                title = f"★ {title}"
             item = QListWidgetItem(f"{title}\n{note.synced_at:%d %b %Y} · {status}")
             item.setToolTip(f"{title}\n{note.synced_at:%d %b %Y} · {status}")
             item.setData(Qt.ItemDataRole.UserRole, note)
@@ -990,6 +1232,7 @@ class HuionNoteWindow(QMainWindow):
         self.export_button.setEnabled(bool(notes) and not self._busy)
         self.transcribe_button.setEnabled(bool(notes) and not self._busy)
         self.delete_button.setEnabled(bool(notes) and not self._busy)
+        self.organize_button.setEnabled(len(notes) == 1 and not self._busy)
         all_selected = bool(self.note_list.count()) and len(notes) == self.note_list.count()
         self.select_all_button.setText("Clear selection" if all_selected else "Select all")
         self.select_all_button.setEnabled(bool(self.note_list.count()) and not self._busy)
@@ -1006,6 +1249,7 @@ class HuionNoteWindow(QMainWindow):
             self.no_selection.show()
             self.editor.setEnabled(False)
             self.save_transcript_button.setEnabled(False)
+            self.review_button.setEnabled(False)
             return
         self.no_selection.hide()
         self.note_meta.show()
@@ -1025,7 +1269,8 @@ class HuionNoteWindow(QMainWindow):
             return
         self._selected_note = note
         self.editor.setEnabled(True)
-        self.note_title.setText(Path(note.svg_path).stem.replace("_", " ").title())
+        metadata = self._metadata.get(note.svg_path, {})
+        self.note_title.setText(metadata.get("title") or Path(note.svg_path).stem.replace("_", " ").title())
         self.note_meta.setText(f"{note.synced_at:%d %B %Y, %H:%M} · {len(notes)} selected" if len(notes) > 1 else f"{note.synced_at:%d %B %Y, %H:%M}")
         self.preview.set_svg(note.svg_path)
         self.review_preview.set_svg(note.svg_path)
@@ -1035,6 +1280,7 @@ class HuionNoteWindow(QMainWindow):
         self.editor.setPlainText(markdown)
         self._editor_dirty = False
         self.save_transcript_button.setEnabled(False)
+        self.review_button.setEnabled(note.status == NoteStatus.CONVERTED and not metadata.get("reviewed") and not self._busy)
 
     def open_transcript_link(self, url: QUrl) -> None:
         if url.scheme() in ("https", "http"):
@@ -1052,10 +1298,12 @@ class HuionNoteWindow(QMainWindow):
             self.review_splitter.setSizes([400, 400])
 
     def adapt_live_toolbar(self) -> None:
-        style = (Qt.ToolButtonStyle.ToolButtonIconOnly if self.width() < 1050
+        compact = self.width() < 1050
+        style = (Qt.ToolButtonStyle.ToolButtonIconOnly if compact
                  else Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         for control in (self.ink_button, self.image_button, self.present_button):
             control.setToolButtonStyle(style)
+        self.live_position.setVisible(not compact)
 
     def resizeEvent(self, event: Any) -> None:
         super().resizeEvent(event)
@@ -1102,10 +1350,61 @@ class HuionNoteWindow(QMainWindow):
         menu = QMenu(self)
         menu.addAction("Export selected pages…", self.export_selected)
         menu.addAction("Transcribe selected pages…", self.transcribe_selected)
+        if len(self.selected_notes()) == 1:
+            menu.addAction(ui_icon("organize"), "Rename and organise…", self.organize_selected)
         menu.addAction("Open handwriting externally", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.selected_notes()[0].svg_path)))
         menu.addSeparator()
         menu.addAction(ui_icon("delete"), "Delete selected pages…", self.delete_selected)
         menu.exec(self.note_list.mapToGlobal(position))
+
+    def organize_selected(self) -> None:
+        notes = self.selected_notes()
+        if len(notes) != 1 or self._busy:
+            return
+        note = notes[0]
+        metadata = self.service.note_metadata(note)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Organise page")
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+        layout.addWidget(label("Page details", "title"))
+        form = QFormLayout()
+        title = QLineEdit(metadata.get("title") or Path(note.svg_path).stem.replace("_", " ").title())
+        tags = QLineEdit(", ".join(metadata.get("tags", [])))
+        tags.setPlaceholderText("meeting, project, follow-up")
+        collection = QLineEdit(metadata.get("collection", ""))
+        collection.setPlaceholderText("Optional notebook or project")
+        favourite = QCheckBox("Favourite")
+        favourite.setChecked(bool(metadata.get("favourite")))
+        form.addRow("Title", title)
+        form.addRow("Tags", tags)
+        form.addRow("Collection", collection)
+        form.addRow("", favourite)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText("Save details")
+        buttons.button(QDialogButtonBox.StandardButton.Save).setObjectName("primary")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.service.update_note_metadata(note, title=title.text(),
+                                              tags=[value.strip() for value in tags.text().split(",")],
+                                              collection=collection.text(), favourite=favourite.isChecked())
+            self.load_library()
+            self.log("Page details saved.")
+
+    def mark_reviewed(self) -> None:
+        if not self._selected_note:
+            return
+        metadata = self.service.note_metadata(self._selected_note)
+        self.service.update_note_metadata(
+            self._selected_note,
+            title=metadata.get("title", ""), tags=metadata.get("tags", []),
+            collection=metadata.get("collection", ""), favourite=metadata.get("favourite", False), reviewed=True)
+        self.load_library()
+        self.log("Transcript marked as reviewed.")
 
     def delete_selected(self) -> None:
         notes = self.selected_notes()
@@ -1151,7 +1450,13 @@ class HuionNoteWindow(QMainWindow):
         self.export_button.setEnabled(False)
         self.transcribe_button.setEnabled(False)
         self.delete_button.setEnabled(False)
+        self.organize_button.setEnabled(False)
         self.save_transcript_button.setEnabled(False)
+        self.review_button.setEnabled(False)
+        for control in (getattr(self, "device_sync_button", None), getattr(self, "sync_clear_button", None),
+                        getattr(self, "erase_device_button", None)):
+            if control:
+                control.setEnabled(False)
         self.progress.setRange(0, 0)
         self.progress.show()
         self.log(f"{name}…")
@@ -1179,7 +1484,12 @@ class HuionNoteWindow(QMainWindow):
         self.export_button.setEnabled(bool(self.selected_notes()))
         self.transcribe_button.setEnabled(bool(self.selected_notes()))
         self.delete_button.setEnabled(bool(self.selected_notes()))
+        self.organize_button.setEnabled(len(self.selected_notes()) == 1)
         self.save_transcript_button.setEnabled(self._editor_dirty and self._selected_note is not None)
+        for control in (getattr(self, "device_sync_button", None), getattr(self, "sync_clear_button", None),
+                        getattr(self, "erase_device_button", None)):
+            if control:
+                control.setEnabled(True)
 
     def job_complete(self, name: str, result: Any) -> None:
         self.finish_job()
@@ -1197,6 +1507,15 @@ class HuionNoteWindow(QMainWindow):
         if name == "Sync":
             self._show_page(0)
             self.log(f"Synced {count} pages. Originals remain on the notebook.")
+        elif name == "Sync & free space":
+            self.log(f"Saved and removed {count} notebook page{'s' if count != 1 else ''}.")
+        if name in {"Sync", "Sync & free space", "Clear notebook memory"} and hasattr(self, "sync_history"):
+            stamp = __import__("datetime").datetime.now().strftime("%H:%M")
+            summary = (f"{stamp} · {name} · {count} page{'s' if count != 1 else ''}"
+                       if name != "Clear notebook memory" else f"{stamp} · Notebook memory erased")
+            if self.sync_history.toPlainText().startswith("No sync activity"):
+                self.sync_history.clear()
+            self.sync_history.append(summary)
 
     def job_error(self, name: str, message: str) -> None:
         self.finish_job()
@@ -1211,6 +1530,22 @@ class HuionNoteWindow(QMainWindow):
 
     def sync_now(self) -> None:
         self.run_job("Sync", lambda: self.service.sync(progress=self.job_progress.emit))
+
+    def confirm_sync_and_clear(self) -> None:
+        if self._busy:
+            return
+        confirmation = QMessageBox(self)
+        confirmation.setWindowTitle("Sync and free notebook space?")
+        confirmation.setText("Copy stored pages, then remove each successfully saved page from the X10?")
+        confirmation.setInformativeText("A page is removed only after its local files are written. If transfer stops, pages not yet saved remain on the notebook.")
+        confirmation.addButton(QMessageBox.StandardButton.Cancel)
+        proceed = QPushButton("Sync and free space")
+        proceed.setObjectName("primary")
+        confirmation.addButton(proceed, QMessageBox.ButtonRole.AcceptRole)
+        confirmation.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        confirmation.exec()
+        if confirmation.clickedButton() == proceed:
+            self.run_job("Sync & free space", lambda: self.service.sync_and_free_space(progress=self.job_progress.emit))
 
     def export_selected(self) -> None:
         notes = self.selected_notes()
@@ -1237,6 +1572,9 @@ class HuionNoteWindow(QMainWindow):
                 check.setEnabled(any((n.json_path and Path(n.json_path).suffix == ".json") if fmt == "json" else n.markdown_path for n in notes))
             checks[fmt] = check
             layout.addWidget(check)
+        combined = QCheckBox("One combined PDF · selected pages in library order")
+        combined.setEnabled(len(notes) > 1)
+        layout.addWidget(combined)
         export_hint = label("Existing files won't be overwritten. Transcripts and pen data are included only when available.", "muted")
         export_hint.setWordWrap(True)
         layout.addWidget(export_hint)
@@ -1244,20 +1582,25 @@ class HuionNoteWindow(QMainWindow):
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Choose folder…")
         buttons.button(QDialogButtonBox.StandardButton.Ok).setObjectName("primary")
         buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
-        for check in checks.values():
+        for check in (*checks.values(), combined):
             check.toggled.connect(lambda: buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
-                any(c.isChecked() and c.isEnabled() for c in checks.values())))
+                any(c.isChecked() and c.isEnabled() for c in checks.values()) or combined.isChecked()))
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         formats = [fmt for fmt, check in checks.items() if check.isChecked()]
-        if not formats:
+        if not formats and not combined.isChecked():
             return
         directory = QFileDialog.getExistingDirectory(self, "Export destination")
         if directory:
-            self.run_job("Export", lambda: self.service.export_notes(notes, directory, formats, self.job_progress.emit))
+            def work() -> list:
+                exported = self.service.export_notes(notes, directory, formats, self.job_progress.emit) if formats else []
+                if combined.isChecked():
+                    exported.append(self.service.export_combined_pdf(notes, str(Path(directory) / "HuionNote pages.pdf"), self.job_progress.emit))
+                return exported
+            self.run_job("Export", work)
 
     def transcribe_selected(self) -> None:
         notes = [n for n in self.selected_notes() if n.status in (NoteStatus.SYNCED, NoteStatus.FAILED)]
@@ -1332,6 +1675,11 @@ class HuionNoteWindow(QMainWindow):
         self.previous_page_button.setEnabled(self._history_index > 0)
         self.next_page_button.setEnabled(self._history_index < len(self._live_history))
         self.remove_image_action.setEnabled(self.canvas.has_background())
+        editing = self._history_index == len(self._live_history)
+        self.undo_button.setEnabled(editing and self.canvas.can_undo())
+        self.redo_button.setEnabled(editing and self.canvas.can_redo())
+        self.eraser_button.setEnabled(editing)
+        self.highlighter_button.setEnabled(editing)
         if self._history_index < len(self._live_history):
             text = "Saved page"
         elif self._draft_dirty:

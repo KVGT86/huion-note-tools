@@ -85,6 +85,24 @@ def test_live_image_is_embedded_and_recovers(pipeline, tmp_output):
     assert recovered.live_background is None and not background.exists()
 
 
+def test_live_image_adjustments_and_combined_pdf(pipeline, tmp_output):
+    from PIL import Image
+    source = tmp_output / "wide.png"
+    Image.new("RGB", (800, 300), "#2457A7").save(source)
+    service = HuionApplication(pipeline, MagicMock())
+    service.import_live_background(str(source))
+    adjusted = Path(service.adjust_live_background(rotate=90, crop_to_page=True, opacity=60))
+    with Image.open(adjusted) as image:
+        assert abs(image.width / image.height - 28200 / 37400) < 0.01
+        assert image.getpixel((image.width // 2, image.height // 2))[0] > 50
+    first = Path(service.save_live_page([[(1000, 1000, 3000)]]))
+    service.new_live_page()
+    second = Path(service.save_live_page([[(2000, 2000, 4000)]]))
+    notes = [n for n in service.load_notes() if n.svg_path in {str(first), str(second)}]
+    combined = Path(service.export_combined_pdf(notes, str(tmp_output / "combined.pdf")))
+    assert combined.read_bytes().startswith(b"%PDF")
+
+
 def test_desktop_local_transcription_uses_handwriting_model(pipeline, monkeypatch):
     from huion_note_pipeline import htr
     service = HuionApplication(pipeline, MagicMock())

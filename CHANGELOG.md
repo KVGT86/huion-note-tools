@@ -2,6 +2,20 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.6.0] — 2026-10-07
+
+### Added
+- Dedicated Device workspace with connection, battery, storage estimate, safe sync, verified sync-and-free-space, optional connection auto-sync, session history and an isolated erase action.
+- Live undo/redo, stroke eraser, highlighter, presentation pointer and grid template, with keyboard shortcuts and compact icon controls.
+- Saved-page titles, tags, collections, favourites and transcript review state, all searchable from Notes.
+- Combined multi-page PDF export for selected notes.
+- Imported-image rotation, positioned page cropping and opacity adjustment while preserving the source image.
+
+### Changed
+- Notes, Live notebook and Device now own the X10 mode explicitly; only Live notebook enables tablet streaming.
+- Transcribed pages remain in a Needs review queue until explicitly reviewed.
+- Official pinned Lucide icons cover every new tool and device action.
+
 ## [1.5.0] — 2026-10-07
 
 ### Added
