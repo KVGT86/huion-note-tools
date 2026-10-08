@@ -112,6 +112,12 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     monkeypatch.setattr(window.service, "device_snapshot", lambda: DeviceSnapshot(True, 80))
     window.refresh_connection()
     assert window.device_label.text() == "X10 paired · 80%"
+    monkeypatch.setattr(window.service, "device_snapshot", lambda: DeviceSnapshot(None, None, error="Notebook authentication failed."))
+    window.refresh_connection()
+    assert window.device_label.text() == "Retrying…"
+    assert window.device_label.toolTip() == "Notebook authentication failed."
+    assert "Notebook connection: Notebook authentication failed." in window.activity.toPlainText()
+    monkeypatch.setattr(window.service, "device_snapshot", lambda: DeviceSnapshot(True, 80))
     from PySide6.QtWidgets import QAbstractItemView
     assert window.note_list.selectionMode() == QAbstractItemView.SelectionMode.MultiSelection
     assert not window.delete_button.isEnabled()

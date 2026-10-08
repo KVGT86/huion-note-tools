@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "huion-note-pipeline"
-version = "1.7.2"
+version = "1.7.3"
 description = "BLE sync and note-to-markdown companion pipeline for Huion Note X10"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -39,7 +39,6 @@ ai = [
 dev = [
     "pytest>=8.0",
     "hypothesis>=6.100",
-    "pytest-asyncio",
 ]
 
 [project.scripts]
@@ -55,4 +54,3 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
-asyncio_mode = "auto"

@@ -111,12 +111,16 @@ class DeviceBridge:
         self._on_button_callbacks: List[Callable[[], None]] = []
         self._pipeline: Optional[SyncPipeline] = None
         self._stream_thread: Optional[threading.Thread] = None
-        self._stop_event = threading.Event()
+        self._stop_event: Optional[threading.Event] = None
+        self._worker_task: Optional[asyncio.Task] = None
+        self._worker_lock = threading.RLock()
+        self._worker_generation = 0
         self._current_loop: Optional[asyncio.AbstractEventLoop] = None
         self._conn: Optional[BleDeviceConnection] = None
         self._current_conn: Optional[BleDeviceConnection] = None  # active notebook connection
         self._mode = "notes"
         self._is_connected: bool = False
+        self._last_error: Optional[str] = None
         self._last_battery: Optional[int] = None  # cached battery %
         self._sync_queue: Optional[asyncio.Queue] = None
         self.last_storage_sync: Optional[tuple[str, int]] = None
@@ -347,43 +351,59 @@ class DeviceBridge:
         if mode not in {"notes", "tablet"}:
             raise ValueError(f"Unsupported notebook mode: {mode}")
 
-        if self._stream_thread and self._stream_thread.is_alive():
-            if self._mode == mode:
+        with self._worker_lock:
+            if self._stream_thread and self._stream_thread.is_alive():
+                if self._mode != mode:
+                    self._mode = mode
+                    self._is_connected = False
+                    self._last_error = None
                 return
-            self.stop_pen_input()
+            self._start_worker(addr, mode)
 
+    def _start_worker(self, addr: str, mode: str) -> None:
+        """Start one BLE worker while the caller holds ``_worker_lock``."""
+        self._worker_generation += 1
+        generation = self._worker_generation
+        stop_event = threading.Event()
+        self._stop_event = stop_event
         self._mode = mode
-        self._stop_event.clear()
+
+        def active() -> bool:
+            return not stop_event.is_set() and generation == self._worker_generation
 
         async def _ble_worker():
-            while not self._stop_event.is_set():
+            while active():
                 conn = BleDeviceConnection(mac=addr)
-                self._conn = conn
-                self._current_conn = conn
+                if active():
+                    self._conn = conn
+                    self._current_conn = conn
                 disconnected_event = asyncio.Event()
                 battery_tick = 0
+                active_mode = None
 
                 try:
                     await conn.connect()
-                    self._is_connected = True
+                    if not active():
+                        break
                     await conn.setup_signals(self._handle_raw_data, lambda: disconnected_event.set())
-                    if mode == "tablet":
-                        await conn.enter_live_tablet_mode()
-                    else:
-                        await conn.enter_notes_mode()
-
-                    # Read battery immediately after connect
-                    try:
-                        batt = await conn.read_battery()
-                        if batt is not None:
-                            self._last_battery = batt
-                    except Exception:
-                        pass
-
-                    while not self._stop_event.is_set() and not disconnected_event.is_set():
+                    while active() and not disconnected_event.is_set():
+                        desired_mode = self._mode
+                        if desired_mode != active_mode:
+                            self._is_connected = False
+                            if desired_mode == "tablet":
+                                await conn.enter_live_tablet_mode()
+                            else:
+                                await conn.enter_notes_mode()
+                            if not active():
+                                break
+                            if desired_mode != self._mode:
+                                continue
+                            active_mode = desired_mode
+                            self._is_connected = True
+                            self._last_error = None
+                            battery_tick = 300
                         await asyncio.sleep(0.1)
                         battery_tick += 1
-                        # Re-poll battery every 30 s (300 × 0.1 s)
                         if battery_tick >= 300:
                             battery_tick = 0
                             try:
@@ -392,45 +412,74 @@ class DeviceBridge:
                                     self._last_battery = batt
                             except Exception:
                                 pass
+                except asyncio.CancelledError:
+                    raise
                 except Exception as e:
+                    if generation == self._worker_generation:
+                        self._last_error = str(e)
                     logger.debug(f"BLE bridge worker notice: {e}")
                 finally:
-                    self._is_connected = False
-                    self._current_conn = None
+                    if generation == self._worker_generation:
+                        self._is_connected = False
+                        if self._current_conn is conn:
+                            self._current_conn = None
                     try:
                         await conn.close()
                     except Exception:
                         pass
 
-                if not self._stop_event.is_set():
+                if active():
                     await asyncio.sleep(1.0)
 
         def _runner():
             loop = asyncio.new_event_loop()
-            self._current_loop = loop
+            if generation == self._worker_generation:
+                self._current_loop = loop
             asyncio.set_event_loop(loop)
+            task = loop.create_task(_ble_worker())
+            if generation == self._worker_generation:
+                self._worker_task = task
             try:
-                loop.run_until_complete(_ble_worker())
+                loop.run_until_complete(task)
+            except asyncio.CancelledError:
+                pass
             finally:
+                if generation == self._worker_generation:
+                    self._worker_task = None
                 loop.close()
 
-        self._stream_thread = threading.Thread(target=_runner, daemon=True)
-        self._stream_thread.start()
+        thread = threading.Thread(target=_runner, daemon=True)
+        self._stream_thread = thread
+        thread.start()
 
     def stop_pen_input(self) -> None:
         """Cleanly signals the BLE thread to shut down and awaits disconnection."""
-        self._stop_event.set()
-        if self._stream_thread and self._stream_thread.is_alive():
-            self._stream_thread.join(timeout=2.5)
-        self._stream_thread = None
-        self._current_loop = None
+        with self._worker_lock:
+            self._worker_generation += 1
+            stop_event = self._stop_event
+            thread = self._stream_thread
+            loop = self._current_loop
+            task = self._worker_task
+            if stop_event:
+                stop_event.set()
+            if loop and loop.is_running() and task and not task.done():
+                loop.call_soon_threadsafe(task.cancel)
+            if thread and thread.is_alive() and thread is not threading.current_thread():
+                thread.join(timeout=2.5)
+            self._is_connected = False
+            self._current_conn = None
+            self._stream_thread = None
+            self._stop_event = None
+            self._worker_task = None
+            self._current_loop = None
 
     def retry_connection(self, mac: str = "25:6C:BB:8D:19:50", mode: str = "tablet") -> None:
         """Forces an immediate, clean reconnection cycle."""
-        self._is_connected = False
-        self._last_battery = None
-        self.stop_pen_input()
-        self.stream_pen_input(mac, mode=mode)
+        with self._worker_lock:
+            self._is_connected = False
+            self._last_battery = None
+            self.stop_pen_input()
+            self._start_worker(mac, mode)
 
     def pull(self, device: X10Device) -> List[Page]:
         """Pull stored offline notes using the robust OfflineSyncManager."""

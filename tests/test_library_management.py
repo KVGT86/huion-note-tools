@@ -188,10 +188,87 @@ def test_bridge_enters_live_handshake_only_for_tablet_mode(monkeypatch):
     bridge = ble_bridge.DeviceBridge()
     bridge.stream_pen_input("AA:BB:CC:DD:EE:FF", mode="notes")
     assert ready.wait(1) and "notes" in calls and "tablet" not in calls
-    bridge.stop_pen_input()
     ready.clear()
     bridge.stream_pen_input("AA:BB:CC:DD:EE:FF", mode="tablet")
-    assert ready.wait(1) and calls[-1] == "tablet"
+    assert ready.wait(1) and "close" not in calls and calls[-1] == "tablet"
+    bridge.stop_pen_input()
+
+
+def test_bridge_is_not_ready_until_mode_handshake_finishes(monkeypatch):
+    from huion_note_pipeline import ble_bridge
+    entered = threading.Event()
+    release = threading.Event()
+    ready = threading.Event()
+
+    class Connection:
+        def __init__(self, mac):
+            self.mac = mac
+        async def connect(self):
+            pass
+        async def setup_signals(self, *_):
+            pass
+        async def enter_notes_mode(self):
+            entered.set()
+            while not release.is_set():
+                await asyncio.sleep(0.01)
+        async def read_battery(self):
+            ready.set()
+            return None
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(ble_bridge, "BleDeviceConnection", Connection)
+    bridge = ble_bridge.DeviceBridge()
+    bridge.stream_pen_input("AA:BB:CC:DD:EE:FF", mode="notes")
+    assert entered.wait(1)
+    assert not bridge.is_connected()
+    release.set()
+    assert ready.wait(1)
+    assert bridge.is_connected()
+    bridge.stop_pen_input()
+
+
+def test_mode_switch_reuses_worker_still_connecting(monkeypatch):
+    from huion_note_pipeline import ble_bridge
+    first_started = threading.Event()
+    release = threading.Event()
+    tablet_ready = threading.Event()
+    instances = []
+    modes = []
+
+    class Connection:
+        def __init__(self, mac):
+            self.mac = mac
+            self.index = len(instances)
+            instances.append(self)
+        async def connect(self):
+            if self.index == 0:
+                first_started.set()
+                while not release.is_set():
+                    await asyncio.sleep(0.01)
+        async def setup_signals(self, *_):
+            pass
+        async def enter_notes_mode(self):
+            modes.append("notes")
+        async def enter_live_tablet_mode(self):
+            modes.append("tablet")
+            tablet_ready.set()
+        async def read_battery(self):
+            return None
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(ble_bridge, "BleDeviceConnection", Connection)
+    bridge = ble_bridge.DeviceBridge()
+    bridge.stream_pen_input("AA:BB:CC:DD:EE:FF", mode="notes")
+    assert first_started.wait(1)
+    bridge.stream_pen_input("AA:BB:CC:DD:EE:FF", mode="tablet")
+    release.set()
+    assert tablet_ready.wait(1)
+    assert modes == ["tablet"]
+    assert len(instances) == 1
+    assert bridge._current_conn is instances[0]
+    assert bridge.is_connected()
     bridge.stop_pen_input()
 
 
@@ -232,3 +309,26 @@ def test_notes_mode_authenticates_before_heartbeat():
     conn.write_cmd = write
     asyncio.run(conn.authenticate_notes_mode())
     assert [frame[1] for frame in writes] == [0x81, 0x82]
+
+
+def test_connection_retry_does_not_disconnect_resolving_device():
+    from dbus_fast import MessageType
+    from huion.ble import BleDeviceConnection
+    from unittest.mock import AsyncMock
+
+    members = []
+
+    class Bus:
+        async def call(self, message):
+            members.append(message.member)
+            if members.count("Connect") == 1:
+                return SimpleNamespace(message_type=MessageType.ERROR, error_name="org.bluez.Error.Failed")
+            return SimpleNamespace(message_type=MessageType.METHOD_RETURN, error_name=None)
+
+    conn = BleDeviceConnection("AA:BB:CC:DD:EE:FF")
+    conn.bus = Bus()
+    conn.dev_path = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF"
+    conn._get_device_prop = AsyncMock(side_effect=lambda name: name == "ServicesResolved")
+    conn._resolve_characteristics = AsyncMock()
+    assert asyncio.run(conn.connect(retries=2))
+    assert members == ["Connect", "Connect"]

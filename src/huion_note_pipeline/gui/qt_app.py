@@ -606,6 +606,7 @@ class HuionNoteWindow(QMainWindow):
         self._editor_dirty = False
         self._device_mode = None
         self._last_connected = False
+        self._last_connection_error = ""
         self.setWindowTitle("HuionNote")
         self.resize(1280, 820)
         self.setMinimumSize(860, 580)
@@ -1130,6 +1131,7 @@ class HuionNoteWindow(QMainWindow):
 
     def refresh_connection(self) -> None:
         snapshot = self.service.device_snapshot()
+        error = snapshot.error.strip()
         if snapshot.connected is True:
             state = "live" if self.pages.currentIndex() == 1 else "paired"
             self.device_label.setText(f"X10 {state}" + (f" · {snapshot.battery}%" if snapshot.battery is not None else ""))
@@ -1137,11 +1139,14 @@ class HuionNoteWindow(QMainWindow):
                 ("Live pen streaming" if state == "live" else "Notebook paired; live streaming is off")
                 + (f" · {snapshot.battery}% battery" if snapshot.battery is not None else ""))
         elif snapshot.connected is None:
-            self.device_label.setText("Connecting…")
-            self.device_label.setToolTip("Connecting to X10. Touch the paper with your pen to wake it.")
+            self.device_label.setText("Retrying…" if error else "Connecting…")
+            self.device_label.setToolTip(error or "Connecting to X10. Touch the paper with your pen to wake it.")
         else:
             self.device_label.setText("X10 offline")
-            self.device_label.setToolTip("Notebook disconnected. Saved pages remain available; use Reconnect to try again.")
+            self.device_label.setToolTip(error or "Notebook disconnected. Saved pages remain available; use Reconnect to try again.")
+        if error and error != self._last_connection_error:
+            self.log(f"Notebook connection: {error}")
+        self._last_connection_error = error
         if snapshot.stored_pages is None:
             self.storage_label.setText("Storage · sync to estimate")
             self.storage_label.setToolTip("Sync the X10 to estimate free pages. Local page counts do not measure notebook storage.")

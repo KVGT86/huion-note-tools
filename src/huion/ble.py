@@ -167,16 +167,9 @@ class BleDeviceConnection:
 
         connected = False
         for attempt in range(retries):
-            # On retry attempts, clear any stale state and trigger brief discovery to listen for tablet advertisements
+            # On retries, listen for fresh advertisements without tearing down a
+            # connection BlueZ may still be resolving.
             if attempt > 0:
-                try:
-                    await self.bus.call(Message(
-                        destination=BLUEZ, path=self.dev_path,
-                        interface="org.bluez.Device1", member="Disconnect"
-                    ))
-                except Exception:
-                    pass
-
                 if self.adapter_path:
                     try:
                         await self.bus.call(Message(
@@ -198,9 +191,11 @@ class BleDeviceConnection:
             if reply.message_type == MessageType.METHOD_RETURN or (reply.error_name and "AlreadyConnected" in reply.error_name):
                 connected = True
                 break
-            else:
-                log.debug(f"Connect attempt {attempt + 1} notice: {reply.error_name}")
-                await asyncio.sleep(0.5)
+            if await self._get_device_prop("Connected"):
+                connected = True
+                break
+            log.debug(f"Connect attempt {attempt + 1} notice: {reply.error_name}")
+            await asyncio.sleep(0.5)
 
         if not connected:
             # Check if property says Connected anyway
@@ -211,11 +206,14 @@ class BleDeviceConnection:
                 )
 
         # Wait for GATT ServicesResolved
+        resolved = False
         for _ in range(50):
             resolved = await self._get_device_prop("ServicesResolved")
             if resolved:
                 break
             await asyncio.sleep(0.1)
+        if not resolved:
+            raise ConnectionError("Connected to Huion Note, but its notebook services did not become ready.")
 
         # Resolve FFE1 and FFE2 paths
         await self._resolve_characteristics()
@@ -350,9 +348,9 @@ class BleDeviceConnection:
     async def enter_notes_mode(self) -> None:
         """Keep the X10 paired without enabling live pen streaming."""
         await self.start_notifications()
-        await self.authenticate_notes_mode()
         if self._ka_task:
             self._ka_task.cancel()
+        await self.authenticate_notes_mode()
         heartbeat = bytes([MARKER_START, CMD_NOTE_HEARTBEAT, 0x08, 0, 0, 0, 0, 0xED])
         await self.write_cmd(heartbeat)
         self._ka_task = asyncio.create_task(self._notes_keepalive_loop(heartbeat))

@@ -2,6 +2,15 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.7.3] — 2026-10-08
+
+### Fixed
+- Notes, Live notebook and Device now change protocol mode on one BLE session instead of disconnecting the X10 between pages.
+- Connection readiness is reported only after authentication and the requested mode handshake complete.
+- Rapid page changes and reconnects cannot leave stale BLE workers competing for the notebook or overwriting current connection state.
+- Connection retries preserve BlueZ sessions that are still resolving instead of forcibly disconnecting them.
+- Actionable connection failures now appear in the application status and activity log.
+
 ## [1.7.2] — 2026-10-08
 
 ### Fixed

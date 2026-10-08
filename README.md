@@ -24,7 +24,7 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 
 The Tkinter annotation editor and tray implementation remain in the repository as legacy tools; they are not features of the default Qt workspace.
 
-## Desktop 1.7.2
+## Desktop 1.7.3
 
 Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Edit transcript. Each click toggles a page in the selection; Select all/Clear selection handles the full filtered list. Export and Transcribe operate on that selection.
 
@@ -42,7 +42,7 @@ UI icons are downloaded from [Lucide](https://lucide.dev/icons/), bundled locall
 
 Open **Live notebook** when sharing your writing. Save page adds the current page to Notes; New page saves it before starting a fresh page. The X10 page button uses the same save-and-advance action. Previous/Next browse this session; earlier saved sessions remain in Notes. A draft is saved every three seconds and restored on restart. Disconnects leave the page visible.
 
-The X10 stays in its normal paired mode while Notes is open. HuionNote enables live pen streaming only when Live notebook is open, then returns the device to paired mode when you leave that workspace.
+The X10 stays in its normal paired mode while Notes is open. HuionNote enables live pen streaming only when Live notebook is open, then returns the device to paired mode when you leave that workspace. Page changes reuse the active Bluetooth session, so the notebook does not need to be woken again between Notes, Live notebook and Device.
 
 Linux requires the small BlueZ duplicate-MTU patch bundled at [`packaging/bluez/huion-x10-duplicate-mtu.patch`](packaging/bluez/huion-x10-duplicate-mtu.patch). Without it, X10 firmware can trigger a disconnect every 5–8 seconds. Build it against your distribution's BlueZ source, install the resulting package and hold that package so a stock update does not silently restore the fault. The patch comes from the [upstream X10 Linux driver](https://github.com/Reginleif86/huion-note-x10-ble).
 

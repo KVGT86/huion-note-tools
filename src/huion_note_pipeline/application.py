@@ -51,6 +51,7 @@ class DeviceSnapshot:
     battery: Optional[int]
     stored_pages: Optional[int] = None
     storage_checked_at: str = ""
+    error: str = ""
 
 
 class HuionApplication:
@@ -170,6 +171,7 @@ class HuionApplication:
             battery=getattr(self.bridge, "_last_battery", None),
             stored_pages=count if valid else None,
             storage_checked_at=str(storage.get("checked_at", "")) if valid else "",
+            error=str(getattr(self.bridge, "_last_error", "") or ""),
         )
 
     def delete_notes(self, notes: list[Note]) -> list[str]:
