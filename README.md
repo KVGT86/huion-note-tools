@@ -24,7 +24,7 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 
 The Tkinter annotation editor and tray implementation remain in the repository as legacy tools; they are not features of the default Qt workspace.
 
-## Desktop 1.7.0
+## Desktop 1.7.1
 
 Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Edit transcript. Each click toggles a page in the selection; Select all/Clear selection handles the full filtered list. Export and Transcribe operate on that selection.
 

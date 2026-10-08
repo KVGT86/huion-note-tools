@@ -367,7 +367,7 @@ class DeviceBridge:
                 if self._mode == "tablet":
                     await conn.enter_live_tablet_mode()
                 else:
-                    await conn.start_notifications()
+                    await conn.enter_notes_mode()
             except Exception:
                 pass
 
@@ -401,7 +401,7 @@ class DeviceBridge:
                     if mode == "tablet":
                         await conn.enter_live_tablet_mode()
                     else:
-                        await conn.start_notifications()
+                        await conn.enter_notes_mode()
 
                     # Read battery immediately after connect
                     try:

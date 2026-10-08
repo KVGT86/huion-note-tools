@@ -150,10 +150,10 @@ def test_active_sync_records_storage_only_on_explicit_empty_reply(tmp_output):
         if frame[1] in responses:
             bridge._sync_queue.put_nowait(responses[frame[1]])
     bridge._current_conn = SimpleNamespace(mac="AA:BB:CC:DD:EE:FF", write_cmd=write,
-                                           enter_live_tablet_mode=AsyncMock(), start_notifications=AsyncMock())
+                                           enter_live_tablet_mode=AsyncMock(), enter_notes_mode=AsyncMock())
     assert asyncio.run(bridge._async_sync_active_conn(str(tmp_output))) == []
     assert bridge.last_storage_sync == ("AA:BB:CC:DD:EE:FF", 0)
-    bridge._current_conn.start_notifications.assert_awaited_once()
+    bridge._current_conn.enter_notes_mode.assert_awaited_once()
     bridge._current_conn.enter_live_tablet_mode.assert_not_awaited()
 
 
@@ -172,6 +172,8 @@ def test_bridge_enters_live_handshake_only_for_tablet_mode(monkeypatch):
         async def start_notifications(self):
             calls.append("notes")
             ready.set()
+        async def enter_notes_mode(self):
+            await self.start_notifications()
         async def enter_live_tablet_mode(self):
             calls.append("tablet")
             ready.set()
@@ -189,3 +191,21 @@ def test_bridge_enters_live_handshake_only_for_tablet_mode(monkeypatch):
     bridge.stream_pen_input("AA:BB:CC:DD:EE:FF", mode="tablet")
     assert ready.wait(1) and calls[-1] == "tablet"
     bridge.stop_pen_input()
+
+
+def test_notes_mode_sends_idle_heartbeat():
+    from huion.ble import BleDeviceConnection
+    from unittest.mock import AsyncMock
+    conn = BleDeviceConnection("AA:BB:CC:DD:EE:FF")
+    conn.start_notifications = AsyncMock()
+    conn.write_cmd = AsyncMock(return_value=True)
+
+    async def enter():
+        await conn.enter_notes_mode()
+        await asyncio.sleep(0)
+        conn._ka_task.cancel()
+        await conn._ka_task
+
+    asyncio.run(enter())
+    conn.start_notifications.assert_awaited_once()
+    conn.write_cmd.assert_awaited_once_with(bytes([0xCD, 0x80, 0x08, 0, 0, 0, 0, 0xED]))

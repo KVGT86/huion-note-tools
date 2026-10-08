@@ -28,6 +28,7 @@ CMD_TABLET_NAME    = 0xC9  # get device name
 CMD_TABLET_INFO    = 0xC8  # get device info
 CMD_TABLET_VERIFY  = 0xCA  # verify manufacturer
 CMD_TABLET_BATTERY = 0xD1  # battery query / keepalive
+CMD_NOTE_HEARTBEAT = 0x80  # keep notebook mode paired without live streaming
 
 def build_tablet_cmd(cmd_id: int) -> bytes:
     return bytes([MARKER_START, cmd_id, 0, 0, 0, 0, 0, 0])
@@ -333,6 +334,8 @@ class BleDeviceConnection:
     async def enter_live_tablet_mode(self) -> None:
         """Enable notifications and send the handshake that switches the X10 to live streaming."""
         await self.start_notifications()
+        if self._ka_task:
+            self._ka_task.cancel()
         # 3-step Pen Tablet Handshake:
         await self.write_cmd(build_tablet_cmd(CMD_TABLET_NAME))
         await asyncio.sleep(0.05)
@@ -343,6 +346,23 @@ class BleDeviceConnection:
 
         self._ka_task = asyncio.create_task(self._live_keepalive_loop())
         log.info("Entered live tablet streaming mode.")
+
+    async def enter_notes_mode(self) -> None:
+        """Keep the X10 paired without enabling live pen streaming."""
+        await self.start_notifications()
+        if self._ka_task:
+            self._ka_task.cancel()
+        heartbeat = bytes([MARKER_START, CMD_NOTE_HEARTBEAT, 0x08, 0, 0, 0, 0, 0xED])
+        await self.write_cmd(heartbeat)
+        self._ka_task = asyncio.create_task(self._notes_keepalive_loop(heartbeat))
+
+    async def _notes_keepalive_loop(self, heartbeat: bytes) -> None:
+        try:
+            while not self._closed:
+                await asyncio.sleep(5.0)
+                await self.write_cmd(heartbeat)
+        except asyncio.CancelledError:
+            pass
 
     async def _live_keepalive_loop(self) -> None:
         try:

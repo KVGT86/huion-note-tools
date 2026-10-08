@@ -2,6 +2,11 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.7.1] — 2026-10-08
+
+### Fixed
+- Notes and Device now keep the X10 paired with the notebook-mode heartbeat; live pen streaming remains exclusive to Live notebook.
+
 ## [1.7.0] — 2026-10-08
 
 ### Added
