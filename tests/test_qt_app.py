@@ -115,6 +115,7 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     from PySide6.QtWidgets import QAbstractItemView
     assert window.note_list.selectionMode() == QAbstractItemView.SelectionMode.MultiSelection
     assert not window.delete_button.isEnabled()
+    assert not window.obsidian_button.isEnabled()
     window._show_page(1)
     assert window.page_title.text() == "Live notebook"
     assert window.service.bridge.modes[-1] == "tablet"
@@ -208,6 +209,7 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     window._show_page(0)
     window.note_list.setCurrentRow(0)
     assert window.delete_button.isEnabled()
+    assert window.obsidian_button.isEnabled()
     window.select_all_button.click()
     assert not window.note_list.selectedItems()
     assert window.select_all_button.text() == "Select all"
@@ -216,7 +218,7 @@ def test_qt_shell_builds_and_routes(tmp_path, monkeypatch):
     assert window.select_all_button.text() == "Clear selection"
     window.note_list.setCurrentRow(0)
     from PySide6.QtCore import QPoint
-    action_bottom = window.export_button.mapTo(window, QPoint(0, window.export_button.height())).y()
+    action_bottom = window.obsidian_button.mapTo(window, QPoint(0, window.obsidian_button.height())).y()
     footer_top = window.statusbar.mapTo(window, QPoint(0, 0)).y()
     assert footer_top - action_bottom >= 16
     card = window.note_list.visualItemRect(window.note_list.item(0))

@@ -2,6 +2,18 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.7.0] — 2026-10-08
+
+### Added
+- Separate Send to Obsidian Inbox workflow with one configured vault root and bulk support for selected pages.
+- Deterministic `00 Inbox/Huion/YYYY-MM-DD-title.md` notes and `00 Inbox/Huion Attachments/<huion-id>.png` previews.
+- Stable page IDs, safe update-in-place publishing and collision refusal when an unrelated note occupies the target filename.
+- Obsidian frontmatter for Huion titles, tags, collections, favourite and reviewed state.
+
+### Changed
+- Obsidian receives only Markdown and a 1410×1870 mobile-friendly PNG; raw SVG, JSON, drafts and recovery material remain in HuionNote's private library.
+- General Export remains unchanged and continues to preserve conventional numbered copies.
+
 ## [1.6.0] — 2026-10-07
 
 ### Added

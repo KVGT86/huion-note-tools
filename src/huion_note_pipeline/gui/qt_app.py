@@ -527,12 +527,16 @@ class SettingsDialog(QDialog):
         self.pin.setEchoMode(QLineEdit.EchoMode.Password)
         self.gemini = QLineEdit(service.gemini_key)
         self.gemini.setEchoMode(QLineEdit.EchoMode.Password)
+        self.obsidian = QLineEdit(service.obsidian_vault)
+        self.obsidian.setPlaceholderText("Optional Obsidian vault folder")
         form.addRow("Notes folder", self.output)
         form.addRow("", button("Choose folder…", self.choose_folder))
         form.addRow("Bluetooth address", self.mac)
         self.pin.setPlaceholderText("6 digits, if your notebook uses a PIN")
         form.addRow("Notebook PIN (optional)", self.pin)
         form.addRow("Gemini API key", self.gemini)
+        form.addRow("Obsidian vault", self.obsidian)
+        form.addRow("", button("Choose vault…", self.choose_vault))
         hint = label("Gemini receives only the pages you choose to transcribe.\nOn-device transcription does not upload your pages.", "muted")
         hint.setWordWrap(True)
         form.addRow(hint)
@@ -552,10 +556,15 @@ class SettingsDialog(QDialog):
         if path:
             self.output.setText(path)
 
+    def choose_vault(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "Obsidian vault", self.obsidian.text() or str(Path.home()))
+        if path:
+            self.obsidian.setText(path)
+
     def save(self) -> None:
         try:
             self.service.save_settings(self.output.text().strip(), self.gemini.text().strip(),
-                                       self.mac.text().strip(), self.pin.text().strip())
+                                       self.mac.text().strip(), self.pin.text().strip(), self.obsidian.text().strip())
         except Exception as exc:
             self.error.setText(str(exc))
             return
@@ -797,6 +806,10 @@ class HuionNoteWindow(QMainWindow):
         actions.addWidget(self.organize_button)
         actions.addWidget(self.delete_button)
         list_layout.addLayout(actions)
+        self.obsidian_button = button("Send to Obsidian Inbox", self.send_to_obsidian)
+        self.obsidian_button.setToolTip("Publish selected pages as Markdown and mobile-friendly PNGs")
+        self.obsidian_button.setEnabled(False)
+        list_layout.addWidget(self.obsidian_button)
         self.splitter.addWidget(left)
         detail = QWidget()
         detail_layout = QVBoxLayout(detail)
@@ -1232,6 +1245,7 @@ class HuionNoteWindow(QMainWindow):
         self.export_button.setEnabled(bool(notes) and not self._busy)
         self.transcribe_button.setEnabled(bool(notes) and not self._busy)
         self.delete_button.setEnabled(bool(notes) and not self._busy)
+        self.obsidian_button.setEnabled(bool(notes) and not self._busy)
         self.organize_button.setEnabled(len(notes) == 1 and not self._busy)
         all_selected = bool(self.note_list.count()) and len(notes) == self.note_list.count()
         self.select_all_button.setText("Clear selection" if all_selected else "Select all")
@@ -1350,6 +1364,7 @@ class HuionNoteWindow(QMainWindow):
         menu = QMenu(self)
         menu.addAction("Export selected pages…", self.export_selected)
         menu.addAction("Transcribe selected pages…", self.transcribe_selected)
+        menu.addAction("Send to Obsidian Inbox", self.send_to_obsidian)
         if len(self.selected_notes()) == 1:
             menu.addAction(ui_icon("organize"), "Rename and organise…", self.organize_selected)
         menu.addAction("Open handwriting externally", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.selected_notes()[0].svg_path)))
@@ -1450,6 +1465,7 @@ class HuionNoteWindow(QMainWindow):
         self.export_button.setEnabled(False)
         self.transcribe_button.setEnabled(False)
         self.delete_button.setEnabled(False)
+        self.obsidian_button.setEnabled(False)
         self.organize_button.setEnabled(False)
         self.save_transcript_button.setEnabled(False)
         self.review_button.setEnabled(False)
@@ -1484,6 +1500,7 @@ class HuionNoteWindow(QMainWindow):
         self.export_button.setEnabled(bool(self.selected_notes()))
         self.transcribe_button.setEnabled(bool(self.selected_notes()))
         self.delete_button.setEnabled(bool(self.selected_notes()))
+        self.obsidian_button.setEnabled(bool(self.selected_notes()))
         self.organize_button.setEnabled(len(self.selected_notes()) == 1)
         self.save_transcript_button.setEnabled(self._editor_dirty and self._selected_note is not None)
         for control in (getattr(self, "device_sync_button", None), getattr(self, "sync_clear_button", None),
@@ -1509,6 +1526,9 @@ class HuionNoteWindow(QMainWindow):
             self.log(f"Synced {count} pages. Originals remain on the notebook.")
         elif name == "Sync & free space":
             self.log(f"Saved and removed {count} notebook page{'s' if count != 1 else ''}.")
+        elif name == "Obsidian":
+            pages = count // 2
+            self.log(f"Sent {pages} page{'s' if pages != 1 else ''} to Obsidian Inbox.")
         if name in {"Sync", "Sync & free space", "Clear notebook memory"} and hasattr(self, "sync_history"):
             stamp = __import__("datetime").datetime.now().strftime("%H:%M")
             summary = (f"{stamp} · {name} · {count} page{'s' if count != 1 else ''}"
@@ -1657,6 +1677,18 @@ class HuionNoteWindow(QMainWindow):
                 raise RuntimeError("Some pages could not be transcribed. Successful pages were saved.\n\n" + "\n".join(failures))
             return notes
         self.run_job("Transcription", work)
+
+    def send_to_obsidian(self) -> None:
+        notes = self.selected_notes()
+        if not notes or self._busy:
+            return
+        if not self.service.obsidian_vault:
+            QMessageBox.information(
+                self, "Choose your Obsidian vault",
+                "Set the vault folder once in Settings, then use Send to Obsidian Inbox again.")
+            self.open_settings()
+            return
+        self.run_job("Obsidian", lambda: self.service.publish_to_obsidian(notes, self.job_progress.emit))
 
     def receive_point(self, point: Any) -> None:
         if self._history_index < len(self._live_history):

@@ -10,6 +10,8 @@ import subprocess
 import logging
 import tempfile
 import uuid
+import hashlib
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +22,7 @@ from huion.ink import INK, stroke_colors, validate_color
 
 from . import htr
 from .enums import NoteCategory, NoteStatus
-from .frontmatter import build_frontmatter, render_frontmatter
+from .frontmatter import build_frontmatter, render_frontmatter, parse_frontmatter
 from .models import ConversionResult, Note
 from .pipeline import NoteRegistry, SyncPipeline
 from .store import CollisionResolver, JsonStore, MarkdownStore, SvgStore
@@ -115,13 +117,21 @@ class HuionApplication:
     def gemini_key(self) -> str:
         return os.environ.get("GEMINI_API_KEY") or load_config().get("gemini_key", "")
 
-    def save_settings(self, output_directory: str, gemini_key: str, mac_address: str | None = None, pin: str | None = None) -> None:
+    @property
+    def obsidian_vault(self) -> str:
+        return str(self._user_config().get("obsidian_vault", ""))
+
+    def save_settings(self, output_directory: str, gemini_key: str, mac_address: str | None = None,
+                      pin: str | None = None, obsidian_vault: str | None = None) -> None:
         if not output_directory.strip():
             raise ValueError("Choose a notes folder.")
         if mac_address and not re.fullmatch(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", mac_address):
             raise ValueError("Use a Bluetooth address such as AA:BB:CC:DD:EE:FF, or leave it empty for discovery.")
         if pin and not re.fullmatch(r"\d{6}", pin):
             raise ValueError("The optional notebook PIN must contain six digits.")
+        vault = os.path.expanduser(obsidian_vault.strip()) if obsidian_vault else ""
+        if vault and (not Path(vault).is_dir() or not (Path(vault) / ".obsidian").is_dir()):
+            raise ValueError("Choose an Obsidian vault folder containing .obsidian, or leave it empty.")
         Path(os.path.expanduser(output_directory)).mkdir(parents=True, exist_ok=True)
         self.config.output_directory = os.path.expanduser(output_directory)
         self.pipeline.svg_store = SvgStore(self.config.output_directory)
@@ -135,6 +145,8 @@ class HuionApplication:
             cfg["mac_address"] = mac_address.upper()
         if pin is not None:
             cfg["pin"] = pin
+        if obsidian_vault is not None:
+            cfg["obsidian_vault"] = vault
         save_config(cfg)
         from huion.ble import CONFIG_PATH
         os.chmod(CONFIG_PATH, 0o600)
@@ -473,6 +485,103 @@ class HuionApplication:
             suffix += 1
         images[0].save(candidate, "PDF", save_all=True, append_images=images[1:], resolution=150)
         return str(candidate)
+
+    @staticmethod
+    def huion_id(note: Note) -> str:
+        """A path-independent ID for stable Obsidian publishing."""
+        stem = Path(note.svg_path).stem
+        if stem.startswith("live_") and re.fullmatch(r"live_[A-Za-z0-9_]+", stem):
+            return stem
+        source = Path(note.json_path) if note.json_path and Path(note.json_path).is_file() else Path(note.svg_path)
+        return f"huion-{hashlib.sha256(source.read_bytes()).hexdigest()[:20]}"
+
+    @staticmethod
+    def _obsidian_slug(title: str) -> str:
+        normal = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode().casefold()
+        return re.sub(r"[^a-z0-9]+", "-", normal).strip("-")[:80] or "untitled-note"
+
+    @staticmethod
+    def _transcript_body(note: Note) -> str:
+        if not note.markdown_path or not Path(note.markdown_path).is_file():
+            return ""
+        text = Path(note.markdown_path).read_text(encoding="utf-8")
+        if text.startswith("---"):
+            parts = text.split("---", 2)
+            text = parts[2].lstrip() if len(parts) == 3 else text
+        lines = text.splitlines()
+        if lines and lines[0].startswith("# "):
+            lines = lines[1:]
+        return "\n".join(lines).strip()
+
+    @staticmethod
+    def _published_note_with_id(folder: Path, huion_id: str) -> Path | None:
+        matches = []
+        for path in folder.glob("*.md"):
+            try:
+                properties = parse_frontmatter(path.read_text(encoding="utf-8")[:4096])
+            except OSError:
+                continue
+            if properties and properties.get("huion_id") == huion_id:
+                matches.append(path)
+        if len(matches) > 1:
+            raise RuntimeError(f"More than one Obsidian note has huion_id {huion_id}. Resolve the duplicate before publishing.")
+        return matches[0] if matches else None
+
+    def publish_to_obsidian(self, notes: list[Note], progress: Any = None) -> list[str]:
+        """Publish mobile-friendly notes without exposing HuionNote's raw library."""
+        import cairosvg
+        import yaml
+        if not notes:
+            raise ValueError("Select at least one saved page.")
+        vault = Path(self.obsidian_vault).expanduser()
+        if not vault.is_dir() or not (vault / ".obsidian").is_dir():
+            raise ValueError("Choose your Obsidian vault in Settings before publishing.")
+        inbox = vault / "00 Inbox" / "Huion"
+        attachments = vault / "00 Inbox" / "Huion Attachments"
+        inbox.mkdir(parents=True, exist_ok=True)
+        attachments.mkdir(parents=True, exist_ok=True)
+        published = []
+        for index, note in enumerate(notes):
+            source = Path(note.svg_path)
+            if not source.is_file():
+                raise FileNotFoundError(source)
+            metadata = self.note_metadata(note)
+            title = metadata.get("title") or source.stem.replace("_", " ").title()
+            stable_id = self.huion_id(note)
+            existing = self._published_note_with_id(inbox, stable_id)
+            target = existing or inbox / f"{note.synced_at:%Y-%m-%d}-{self._obsidian_slug(title)}.md"
+            if target.exists() and existing is None:
+                raise FileExistsError(
+                    f"{target.name} already exists with a different Huion ID. Rename it or change this page title; nothing was overwritten.")
+            image = attachments / f"{stable_id}.png"
+            png = cairosvg.svg2png(url=str(source), output_width=1410, output_height=1870)
+            properties = {
+                "title": title,
+                "date": note.synced_at.date(),
+                "source": "huion",
+                "huion_id": stable_id,
+                "status": "inbox",
+                "tags": metadata.get("tags", []),
+                "collection": metadata.get("collection", ""),
+                "favourite": bool(metadata.get("favourite", False)),
+                "reviewed": bool(metadata.get("reviewed", False)),
+            }
+            body = self._transcript_body(note)
+            markdown = "---\n" + yaml.safe_dump(properties, sort_keys=False, allow_unicode=True) + "---\n"
+            markdown += f"# {title}\n\n"
+            if body:
+                markdown += body + "\n\n"
+            markdown += f"![[{stable_id}.png]]\n"
+            for path, content in ((image, png), (target, markdown.encode("utf-8"))):
+                with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temporary:
+                    temporary.write(content)
+                    temporary.flush()
+                    os.fsync(temporary.fileno())
+                os.replace(temporary.name, path)
+            published.extend((str(target), str(image)))
+            if progress:
+                progress(index + 1, len(notes))
+        return published
 
     def clear_device(self) -> None:
         from .ble_bridge import X10Device

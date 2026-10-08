@@ -109,6 +109,8 @@ Selected handwriting renders as vectors. Transcript reading and editing use unde
 
 The bottom action row has 16px clearance above the footer. Export and Transcribe retain text; the adjacent Lucide trash icon has a named tooltip and accessible name. Deletion requires confirmation with Cancel as default and names its recoverable destination, Trash. Associated local files move together; device originals and the current draft remain untouched.
 
+Send to Obsidian Inbox is a separate, full-width library action below conventional export controls. Its literal label distinguishes deterministic vault publishing from general Export. Vault selection lives in Settings, and publishing errors name the required recovery without exposing file-format implementation details.
+
 ### Live notebook
 One toolbar groups page navigation, paper guides, ink and image controls on the left; undo, redo, eraser, highlighter and temporary presentation pointer occupy the middle; save/new-page icons and Present stay on the right. Plain, ruled, grid or dotted paper; fit page, fit width, zoom and pan. Tool buttons use pressed-state lavender and keep their 32px targets, names and keyboard focus. Pressure changes locally along smooth stroke outlines. Completed geometry is cached. Single-point marks remain visible.
 

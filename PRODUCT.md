@@ -28,6 +28,8 @@ Huion Note X10 over Bluetooth on this Linux PC. Local notes must remain usable w
 - Local transcription uses a handwriting-specific model, segments full pages into lines and never silently substitutes general-purpose Tesseract OCR.
 - Saved pages support explicit click-to-toggle multi-selection for batch export, transcription and a combined PDF in library order.
 - Saved pages support user titles, tags, collections, favourites and explicit transcript review state.
+- Selected pages can be published to a configured Obsidian Inbox as frontmatter-rich Markdown plus a mobile PNG, updating only by stable Huion page ID.
+- Raw SVG, JSON, drafts, ledgers and recovery files never enter the Obsidian vault.
 - Device management has a dedicated workspace; sync-and-free-space removes only pages the transport has saved locally, and automatic sync never deletes.
 - Live work supports undo/redo, stroke erasing, highlighting, a temporary pointer, grid guides and non-destructive working-copy image adjustment.
 - Cloud transcription is an explicit action and sends selected handwriting to Gemini.

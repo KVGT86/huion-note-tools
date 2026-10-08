@@ -15,6 +15,7 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 * **Image annotation**: Add a photo, scan or diagram beneath live ink, then save or export the combined page without changing the original image.
 * **Notebook management**: A dedicated Device workspace provides safe sync, verified sync-and-free-space, optional connection auto-sync, storage context and a separated erase action.
 * **Organised library**: Rename, tag, favourite and collect pages; search includes those details and transcripts remain queued until reviewed.
+* **Obsidian Inbox**: Publish selected pages as deterministic Markdown and mobile-friendly PNG previews, updating safely by stable Huion page ID.
 * **Complete live toolkit**: Undo/redo, stroke eraser, highlighter, presentation pointer, paper templates and adjustable image backgrounds.
 * **Local transcription**: Line-segmented Microsoft TrOCR runs on this computer and is tuned for handwriting. Tesseract remains available only through the legacy CLI.
 * **Cloud transcription**: Explicitly selected Gemini transcription using a key configured in Settings. Only selected pages are sent. The REST integration needs no additional SDK.
@@ -23,7 +24,7 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 
 The Tkinter annotation editor and tray implementation remain in the repository as legacy tools; they are not features of the default Qt workspace.
 
-## Desktop 1.6.0
+## Desktop 1.7.0
 
 Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Edit transcript. Each click toggles a page in the selection; Select all/Clear selection handles the full filtered list. Export and Transcribe operate on that selection.
 
@@ -50,6 +51,8 @@ Use **Image → Choose image…** in Live notebook to annotate a JPEG, PNG, WebP
 Shortcuts: Ctrl+F search, Ctrl+S save the current page/transcript, Ctrl+E export, Ctrl+N new live page, F11 present, Escape leave presentation. Ctrl+wheel zooms; dragging pans the page.
 
 Live tool shortcuts: Ctrl+Z undo, Ctrl+Shift+Z redo, Ctrl+Shift+E eraser, Ctrl+Shift+H highlighter and Ctrl+Shift+P presentation pointer. Use Device for notebook storage operations; automatic sync only copies and never erases pages.
+
+Set an **Obsidian vault** once in Settings, then select pages in Notes and choose **Send to Obsidian Inbox**. HuionNote writes notes beneath `00 Inbox/Huion` and PNG previews beneath `00 Inbox/Huion Attachments`. Republishing updates the matching `huion_id`; it never creates numbered vault copies or exports raw pen data into the vault.
 
 Versions follow Semantic Versioning, commits use Conventional Commits, and releases are recorded in [CHANGELOG.md](CHANGELOG.md). See [DESIGN.md](DESIGN.md) for the maintained style guide.
 
