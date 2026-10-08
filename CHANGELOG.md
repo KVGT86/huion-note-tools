@@ -2,6 +2,13 @@
 
 Versions follow Semantic Versioning. Commit messages follow Conventional Commits.
 
+## [1.7.2] — 2026-10-08
+
+### Fixed
+- Notes mode now completes the X10 challenge-response before its heartbeat and ignores duplicate challenge notifications.
+- Active sync reuses the same authenticated connection instead of re-entering notebook mode afterward.
+- Documented and bundled the upstream BlueZ duplicate-MTU patch required for stable X10 sessions on Linux.
+
 ## [1.7.1] — 2026-10-08
 
 ### Fixed

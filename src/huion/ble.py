@@ -350,11 +350,54 @@ class BleDeviceConnection:
     async def enter_notes_mode(self) -> None:
         """Keep the X10 paired without enabling live pen streaming."""
         await self.start_notifications()
+        await self.authenticate_notes_mode()
         if self._ka_task:
             self._ka_task.cancel()
         heartbeat = bytes([MARKER_START, CMD_NOTE_HEARTBEAT, 0x08, 0, 0, 0, 0, 0xED])
         await self.write_cmd(heartbeat)
         self._ka_task = asyncio.create_task(self._notes_keepalive_loop(heartbeat))
+
+    async def authenticate_notes_mode(self) -> None:
+        """Complete the X10 challenge-response before notebook-mode commands."""
+        from .sync_engine import OP_VERIFY_CONNECT, OP_VERIFY_RESULT, OP_VERIFY_PWD, build_frame, verify_response
+
+        queue: asyncio.Queue = asyncio.Queue()
+        previous = self._on_notify_cb
+        self._on_notify_cb = lambda data: queue.put_nowait(bytes(data))
+
+        async def _recv_op(op: int, timeout: float = 2.0) -> bytes:
+            async def _wait() -> bytes:
+                while True:
+                    data = await queue.get()
+                    if len(data) >= 2 and data[0] == MARKER_START and data[1] == op:
+                        return data
+            return await asyncio.wait_for(_wait(), timeout=timeout)
+
+        try:
+            for _ in range(5):
+                await self.write_cmd(build_frame(OP_VERIFY_CONNECT))
+                try:
+                    challenge = await _recv_op(OP_VERIFY_CONNECT)
+                    if len(challenge) < 6:
+                        continue
+                    response = verify_response(challenge[3], challenge[4], challenge[5])
+                    await self.write_cmd(build_frame(OP_VERIFY_RESULT, *response, 0))
+                    result = await _recv_op(OP_VERIFY_RESULT)
+                    if len(result) >= 4 and result[3] == 1:
+                        return
+                    pin = self.config.get("pin")
+                    if len(result) >= 4 and result[3] == 2 and isinstance(pin, str) and len(pin) == 6:
+                        encoded = [ord(pin[i]) + (104, 117, 105, 111, 110, 35)[i] for i in range(6)]
+                        await self.write_cmd(build_frame(OP_VERIFY_PWD, 1, *encoded[:3]))
+                        await self.write_cmd(build_frame(OP_VERIFY_PWD, 2, *encoded[3:]))
+                        result = await _recv_op(OP_VERIFY_RESULT)
+                        if len(result) >= 4 and result[3] == 1:
+                            return
+                except asyncio.TimeoutError:
+                    await asyncio.sleep(0.2)
+        finally:
+            self._on_notify_cb = previous
+        raise RuntimeError("Notebook authentication failed. Wake the X10 and make sure it is in Note Mode.")
 
     async def _notes_keepalive_loop(self, heartbeat: bytes) -> None:
         try:

@@ -209,9 +209,9 @@ class DeviceBridge:
     async def _async_sync_active_conn(self, output_dir: str, delete_after_export: bool = False,
                                       force_vectors: bool = False, progress=None) -> List[Any]:
         from huion.sync_engine import (
-            START, END, OP_VERIFY_CONNECT, OP_VERIFY_RESULT, OP_REQUEST_OFFLINE_DATA,
+            START, END, OP_REQUEST_OFFLINE_DATA,
             OP_RETURN_OFFLINE_DATA, OP_GET_PAGE_PACKAGE, OP_DELETE_PAGE, OP_CLEAR_CACHE,
-            OP_MAX_DATA, OP_SET_DISTANCE, OP_VERIFY_PWD, build_frame, verify_response, decode_packet,
+            OP_MAX_DATA, OP_SET_DISTANCE, build_frame, decode_packet,
             points_to_strokes, NotePage, HuionDevice, ConnectionState, PageSyncStatus,
             MultiFormatRenderer, next_sync_folder, verify_export_artifacts
         )
@@ -229,36 +229,7 @@ class DeviceBridge:
 
         try:
             # 1. Challenge-Response Handshake
-            authed = False
-            for attempt in range(5):
-                await conn.write_cmd(build_frame(OP_VERIFY_CONNECT))
-                try:
-                    while True:
-                        data = await _recv(timeout=2.0)
-                        if len(data) >= 6 and data[0] == START and data[1] == OP_VERIFY_CONNECT:
-                            a, b, c = data[3], data[4], data[5]
-                            r1, r2, r3 = verify_response(a, b, c)
-                            await conn.write_cmd(build_frame(OP_VERIFY_RESULT, r1, r2, r3, 0))
-                            
-                            res = await _recv(timeout=2.0)
-                            if len(res) >= 4 and res[0] == START and res[1] == OP_VERIFY_RESULT:
-                                if res[3] == 1:
-                                    authed = True
-                                    break
-                                pin = load_config().get("pin")
-                                if res[3] == 2 and pin and len(pin) == 6:
-                                    encoded = [ord(pin[i]) + (104, 117, 105, 111, 110, 35)[i] for i in range(6)]
-                                    await conn.write_cmd(build_frame(OP_VERIFY_PWD, 1, *encoded[:3]))
-                                    await conn.write_cmd(build_frame(OP_VERIFY_PWD, 2, *encoded[3:]))
-                                    authed = True
-                                    break
-                    if authed:
-                        break
-                except asyncio.TimeoutError:
-                    await asyncio.sleep(0.2)
-
-            if not authed:
-                raise RuntimeError("Authentication failed. Make sure notebook folio is in Note Mode.")
+            await conn.authenticate_notes_mode()
 
             # 2. Distance and limits
             await conn.write_cmd(build_frame(OP_MAX_DATA))
@@ -366,8 +337,6 @@ class DeviceBridge:
             try:
                 if self._mode == "tablet":
                     await conn.enter_live_tablet_mode()
-                else:
-                    await conn.enter_notes_mode()
             except Exception:
                 pass
 

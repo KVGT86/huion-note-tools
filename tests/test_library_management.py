@@ -150,10 +150,12 @@ def test_active_sync_records_storage_only_on_explicit_empty_reply(tmp_output):
         if frame[1] in responses:
             bridge._sync_queue.put_nowait(responses[frame[1]])
     bridge._current_conn = SimpleNamespace(mac="AA:BB:CC:DD:EE:FF", write_cmd=write,
-                                           enter_live_tablet_mode=AsyncMock(), enter_notes_mode=AsyncMock())
+                                           authenticate_notes_mode=AsyncMock(), enter_live_tablet_mode=AsyncMock(),
+                                           enter_notes_mode=AsyncMock())
     assert asyncio.run(bridge._async_sync_active_conn(str(tmp_output))) == []
     assert bridge.last_storage_sync == ("AA:BB:CC:DD:EE:FF", 0)
-    bridge._current_conn.enter_notes_mode.assert_awaited_once()
+    bridge._current_conn.authenticate_notes_mode.assert_awaited_once()
+    bridge._current_conn.enter_notes_mode.assert_not_awaited()
     bridge._current_conn.enter_live_tablet_mode.assert_not_awaited()
 
 
@@ -198,6 +200,7 @@ def test_notes_mode_sends_idle_heartbeat():
     from unittest.mock import AsyncMock
     conn = BleDeviceConnection("AA:BB:CC:DD:EE:FF")
     conn.start_notifications = AsyncMock()
+    conn.authenticate_notes_mode = AsyncMock()
     conn.write_cmd = AsyncMock(return_value=True)
 
     async def enter():
@@ -208,4 +211,24 @@ def test_notes_mode_sends_idle_heartbeat():
 
     asyncio.run(enter())
     conn.start_notifications.assert_awaited_once()
+    conn.authenticate_notes_mode.assert_awaited_once()
     conn.write_cmd.assert_awaited_once_with(bytes([0xCD, 0x80, 0x08, 0, 0, 0, 0, 0xED]))
+
+
+def test_notes_mode_authenticates_before_heartbeat():
+    from huion.ble import BleDeviceConnection
+    conn = BleDeviceConnection("AA:BB:CC:DD:EE:FF")
+    writes = []
+
+    async def write(frame):
+        writes.append(frame)
+        if frame[1] == 0x81:
+            conn._on_notify_cb(bytes([0xCD, 0x81, 0x08, 1, 2, 3, 0, 0xED]))
+        elif frame[1] == 0x82:
+            conn._on_notify_cb(bytes([0xCD, 0x81, 0x08, 1, 2, 3, 0, 0xED]))
+            conn._on_notify_cb(bytes([0xCD, 0x82, 0x08, 1, 0, 0, 0, 0xED]))
+        return True
+
+    conn.write_cmd = write
+    asyncio.run(conn.authenticate_notes_mode())
+    assert [frame[1] for frame in writes] == [0x81, 0x82]
