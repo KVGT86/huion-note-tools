@@ -1606,10 +1606,6 @@ class HuionNoteWindow(QMainWindow):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Choose folder…")
         buttons.button(QDialogButtonBox.StandardButton.Ok).setObjectName("primary")
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
-        for check in (*checks.values(), combined):
-            check.toggled.connect(lambda: buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
-                any(c.isChecked() and c.isEnabled() for c in checks.values()) or combined.isChecked()))
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
