@@ -260,7 +260,7 @@ def test_live_image_can_be_annotated_saved_and_browsed(pipeline, tmp_output, mon
     from huion_note_pipeline.application import HuionApplication
     app = QApplication.instance() or QApplication([])
     source = tmp_output / "diagram.png"
-    Image.new("RGB", (640, 360), "#E4DEF0").save(source)
+    Image.new("RGB", (640, 360), "#DCEAF2").save(source)
     window = HuionNoteWindow(service=HuionApplication(pipeline, FakeBridge()))
     monkeypatch.setattr("huion_note_pipeline.gui.qt_app.QFileDialog.getOpenFileName",
                         lambda *args: (str(source), "Images"))

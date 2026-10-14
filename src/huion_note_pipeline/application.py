@@ -628,7 +628,7 @@ class HuionApplication:
         ))
         return note
 
-    def convert(self, note: Note, cloud: bool = False, on_started: Any = None) -> Note:
+    def convert(self, note: Note, on_started: Any = None) -> Note:
         if not Path(note.svg_path).exists():
             raise FileNotFoundError(note.svg_path)
         if note.status == NoteStatus.FAILED:
@@ -643,11 +643,7 @@ class HuionApplication:
             on_started(note)
         try:
             title = Path(note.svg_path).stem.replace("_", " ").title()
-            raw, markdown = (
-                htr.convert_gemini(note.svg_path, title=title, api_key=self.gemini_key)
-                if cloud
-                else htr.convert_local(note.svg_path, title=title)
-            )
+            raw, markdown = htr.convert_gemini(note.svg_path, title=title, api_key=self.gemini_key)
             first_line = next((line.strip() for line in raw.splitlines() if line.strip()), title)
             derived = re.sub(r"[^\w\s-]", "", first_line).strip().replace(" ", "_").lower()[:40] or "note"
             category = NoteCategory.WORK if re.search(r"\bcyclops\b", raw, re.I) else NoteCategory.PERSONAL

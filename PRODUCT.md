@@ -25,18 +25,17 @@ Huion Note X10 over Bluetooth on this Linux PC. Local notes must remain usable w
 - Device clearing requires explicit confirmation; normal sync retains device originals.
 - Local page deletion uses recoverable desktop Trash and keeps device originals and live drafts.
 - Remaining X10 pages are an estimate from the last complete device sync, not local import totals or a live storage reading.
-- Local transcription uses a handwriting-specific model, segments full pages into lines and never silently substitutes general-purpose Tesseract OCR.
 - Saved pages support explicit click-to-toggle multi-selection for batch export, transcription and a combined PDF in library order.
 - Saved pages support user titles, tags, collections, favourites and explicit transcript review state.
 - Selected pages can be published to a configured Obsidian Inbox as frontmatter-rich Markdown plus a mobile PNG, updating only by stable Huion page ID.
 - Raw SVG, JSON, drafts, ledgers and recovery files never enter the Obsidian vault.
 - Device management has a dedicated workspace; sync-and-free-space removes only pages the transport has saved locally, and automatic sync never deletes.
 - Live work supports undo/redo, stroke erasing, highlighting, a temporary pointer, grid guides and non-destructive working-copy image adjustment.
-- Cloud transcription is an explicit action and sends selected handwriting to Gemini.
+- Transcription is an explicit action that sends only selected handwriting to Gemini and requires a user-provided API key.
 - Physical pen fidelity must be checked with actual handwriting; synthetic rendering tests cannot establish hardware quality.
 
 ## Brand Commitments
-Preserve the Notion-inspired paper-and-graphite theme and the user's supplied notebook-and-pen icon.
+Preserve the cream paper-and-graphite theme, using steel blue only for accents and the cartoon X10 identity.
 
 ## Product Principles
 - Keep the document central and controls contextual.

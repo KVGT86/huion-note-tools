@@ -321,7 +321,6 @@ class NoteCard(tk.Frame):
     def __init__(self, master, note: Note,
                  on_retry: Optional[Callable[[Note], None]] = None,
                  on_edit: Optional[Callable[[Note], None]] = None,
-                 on_convert_ocr: Optional[Callable[[Note], None]] = None,
                  on_convert_ai: Optional[Callable[[Note], None]] = None,
                  on_view_md: Optional[Callable[[Note, str], None]] = None,
                  **kw):
@@ -332,7 +331,6 @@ class NoteCard(tk.Frame):
         self.note = note
         self.on_retry = on_retry
         self.on_edit = on_edit
-        self.on_convert_ocr = on_convert_ocr
         self.on_convert_ai = on_convert_ai
         self.on_view_md = on_view_md
         self._build()
@@ -419,7 +417,7 @@ class NoteCard(tk.Frame):
                          bg=BG_WELL, fg=TXT_SEC,
                          padx=5, pady=1).pack(side=tk.LEFT, padx=(0, 4))
 
-        # ── Action row: Edit | OCR | AI Convert | View MD | status pill ────────
+        # ── Action row: Edit | Gemini | View MD | status pill ──────────────────
         action_row = tk.Frame(inner, bg=BG_CARD)
         action_row.grid(row=3, column=1, sticky="w", pady=(6, 0))
 
@@ -431,18 +429,10 @@ class NoteCard(tk.Frame):
                 command=lambda: self.on_edit(self.note),
             ).pack(side=tk.LEFT, padx=(0, 5))
 
-        if self.on_convert_ocr:
-            RoundedButton(
-                action_row, text="OCR (Local)", radius=6,
-                bg="#EFF6FF", fg="#1D4ED8", padx=10, pady=3,
-                font=_f(8),
-                command=lambda: self.on_convert_ocr(self.note),
-            ).pack(side=tk.LEFT, padx=(0, 5))
-
         if self.on_convert_ai:
             RoundedButton(
-                action_row, text="AI Convert (Gemini)", radius=6,
-                bg="#F5F3FF", fg="#6D28D9", padx=10, pady=3,
+                action_row, text="Transcribe with Gemini", radius=6,
+                bg="#DCEAF2", fg="#315D78", padx=10, pady=3,
                 font=_f(8),
                 command=lambda: self.on_convert_ai(self.note),
             ).pack(side=tk.LEFT, padx=(0, 5))
@@ -1325,7 +1315,6 @@ class HuionNotePipelineApp:
                 self.scrollable_cards, note=note,
                 on_retry=self.handle_retry_note,
                 on_edit=self.handle_edit_note,
-                on_convert_ocr=self.handle_convert_ocr,
                 on_convert_ai=self.handle_convert_ai,
                 on_view_md=self.handle_view_md,
             )
@@ -1501,46 +1490,6 @@ class HuionNotePipelineApp:
             md_path.write_text(full_md, encoding="utf-8")
             note.markdown_path = str(md_path)
             note.converted_at = datetime.now(timezone.utc)
-
-    def handle_convert_ocr(self, note: Note) -> None:
-        """Run local Tesseract HTR on the given note."""
-        if not note.svg_path or not Path(note.svg_path).exists():
-            self.log("[OCR Error] SVG file not found.")
-            return
-
-        def _worker():
-            self.log(f"[OCR] Starting Tesseract HTR on {Path(note.svg_path).name}...")
-            if self.pipeline:
-                if note.status not in (NoteStatus.SYNCED, NoteStatus.CONVERTING):
-                    note.status = NoteStatus.SYNCED
-                    note.attempt_count = 0
-                if not self.pipeline.begin_conversion(note):
-                    note.status = NoteStatus.CONVERTING
-                    note.attempt_count = 1
-            else:
-                note.status = NoteStatus.CONVERTING
-            self.call_on_ui(self.refresh_notes_list)
-
-            try:
-                raw_text, md_content = htr_module.convert_tesseract(
-                    note.svg_path,
-                    title=Path(note.svg_path).stem.replace("_", " ").title(),
-                )
-                title = self._derive_title(note, raw_text)
-                self._apply_conversion_result(note, title, raw_text, md_content)
-                self.log(f"[OCR] Converted {Path(note.svg_path).name} -> Markdown ({title})")
-            except Exception as e:
-                self.log(f"[OCR Error] {e}")
-                if self.pipeline:
-                    if note.status != NoteStatus.CONVERTING:
-                        note.status = NoteStatus.CONVERTING
-                    self.pipeline.conversion_failed(note, ConversionResult(success=False, error=str(e)))
-                else:
-                    note.status = NoteStatus.FAILED
-            finally:
-                self.call_on_ui(self.refresh_notes_list)
-
-        threading.Thread(target=_worker, daemon=True).start()
 
     def handle_convert_ai(self, note: Note) -> None:
         """Run Gemini Vision AI HTR on the given note."""

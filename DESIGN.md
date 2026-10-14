@@ -13,16 +13,17 @@ colors:
   hairline: "#D6D3CC"
   control-border: "#B8B3AA"
   control-hover: "#81796B"
-  focus-ring: "#786995"
-  selected-wash: "#E4DEF0"
-  selected-text: "#51445F"
+  steel-blue: "#4682B4"
+  focus-ring: "#35698F"
+  selected-wash: "#DCEAF2"
+  selected-text: "#2F5368"
   quiet-hover: "#E4E1DA"
   pressed-wash: "#DEDAD2"
   menu-border: "#A6A198"
   destructive-ink: "#912D27"
   destructive-border: "#D6B6B1"
   destructive-wash: "#FAEDEB"
-  focused-text: "#57466F"
+  focused-text: "#315D78"
 typography:
   title:
     fontFamily: "system sans-serif"
@@ -79,7 +80,7 @@ A restrained native workspace in warm paper and graphite. Saved documents lead; 
 - Minimal page-only presentation mode.
 
 ## Colors
-Graphite is the primary ink and action colour. White is paper; warm paper surrounds documents. Active navigation is graphite with white text. A muted lavender from the supplied logo marks document selection and keyboard focus. Operational messages use plain language; colour never carries meaning alone.
+Graphite is the primary ink and action colour. Cream and white paper remain the dominant surfaces; warm paper surrounds documents. Active navigation is graphite with white text. Steel blue is reserved for document selection, progress, identity accents and keyboard focus. Operational messages use plain language; colour never carries meaning alone.
 
 **The Paper Before Paint Rule.** Use the established neutral palette before adding a hue.
 
@@ -112,7 +113,7 @@ The bottom action row has 16px clearance above the footer. Export and Transcribe
 Send to Obsidian Inbox is a separate, full-width library action below conventional export controls. Its literal label distinguishes deterministic vault publishing from general Export. Vault selection lives in Settings, and publishing errors name the required recovery without exposing file-format implementation details.
 
 ### Live notebook
-One toolbar groups page navigation, paper guides, ink and image controls on the left; undo, redo, eraser, highlighter and temporary presentation pointer occupy the middle; save/new-page icons and Present stay on the right. Plain, ruled, grid or dotted paper; fit page, fit width, zoom and pan. Tool buttons use pressed-state lavender and keep their 32px targets, names and keyboard focus. Pressure changes locally along smooth stroke outlines. Completed geometry is cached. Single-point marks remain visible.
+One toolbar groups page navigation, paper guides, ink and image controls on the left; undo, redo, eraser, highlighter and temporary presentation pointer occupy the middle; save/new-page icons and Present stay on the right. Plain, ruled, grid or dotted paper; fit page, fit width, zoom and pan. Tool buttons use a pale steel-blue pressed state and keep their 32px targets, names and keyboard focus. Pressure changes locally along smooth stroke outlines. Completed geometry is cached. Single-point marks remain visible.
 
 A downloaded Lucide palette icon and visible colour name open a compact menu beside paper guides. Named Graphite, Blue, Burgundy and Green choices have native colour swatches; Custom colour opens Qt's picker. Colour is document content, not a new interface accent. It applies to future strokes only, persists with each stroke and never erases crossing ink. Live polygons use winding fill to match exported SVG nonzero fill.
 
