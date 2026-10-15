@@ -17,8 +17,7 @@ A unified CLI, desktop application, real-time live digital canvas, and automated
 * **Organised library**: Rename, tag, favourite and collect pages; search includes those details and transcripts remain queued until reviewed.
 * **Obsidian Inbox**: Publish selected pages as deterministic Markdown and mobile-friendly PNG previews, updating safely by stable Huion page ID.
 * **Complete live toolkit**: Undo/redo, stroke eraser, highlighter, presentation pointer, paper templates and adjustable image backgrounds.
-* **Local transcription**: Line-segmented Microsoft TrOCR runs on this computer and is tuned for handwriting. Tesseract remains available only through the legacy CLI.
-* **Cloud transcription**: Explicitly selected Gemini transcription using a key configured in Settings. Only selected pages are sent. The REST integration needs no additional SDK.
+* **Gemini transcription**: Explicitly selected pages are sent to Gemini using a key configured in Settings. The REST integration needs no additional SDK.
 * **Device controls**: Connection and battery state, reconnect, persistent folder/address/PIN settings, and confirmed device clearing.
 * **Notion-inspired PySide6 interface**: Paper, graphite, native typography, quiet contextual actions, and an optional activity log. Native Wayland is preferred on supported desktops.
 
@@ -28,7 +27,7 @@ The Tkinter annotation editor and tray implementation remain in the repository a
 
 Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcript, or Edit transcript. Each click toggles a page in the selection; Select all/Clear selection handles the full filtered list. Export and Transcribe operate on that selection.
 
-Enhanced local handwriting transcription uses Microsoft's TrOCR small handwritten model. The model downloads once on first use, then the selected pages remain on this computer. If the model dependencies are unavailable, the desktop app disables the local option instead of silently substituting Tesseract.
+Transcription uses Google Gemini and requires an API key configured in Settings. Only pages you explicitly select are sent.
 
 The trash icon deletes selected local pages after confirmation, moving their associated handwriting, pen data, transcript and preview files to the desktop Trash. Restore them through your file manager. Notebook originals and the active live draft are kept; syncing can import notebook originals again. GIO's system `gio` command is required; deletion refuses to run without recoverable Trash support.
 
@@ -72,7 +71,7 @@ huion-notes/
 │       ├── editor.py            # Vector in-app note annotator & canvas
 │       ├── enums.py             # NoteStatus, NoteCategory enums
 │       ├── frontmatter.py       # YAML metadata parser & generator
-│       ├── htr.py               # Local TrOCR handwriting recognition & Gemini Vision
+│       ├── htr.py               # Gemini handwriting transcription
 │       ├── models.py            # Data models (Note, Page, Stroke, etc.)
 │       ├── pipeline.py          # State machine & offline sync coordinator
 │       ├── store.py             # SVG, JSON, and Markdown storage managers
@@ -111,12 +110,6 @@ huion-notes/
    ```bash
    sudo apt install libxcb-cursor0
    ```
-   Tesseract is needed only for the legacy CLI OCR command:
-
-   ```bash
-   sudo apt install tesseract-ocr tesseract-ocr-eng
-   ```
-
    A platform override remains available for troubleshooting: run with `QT_QPA_PLATFORM=xcb`. Gemini defaults to `gemini-3.8-flash`; set `HUION_GEMINI_MODEL` to another supported model ID if needed. API format: [Google Gemini generateContent](https://ai.google.dev/api/generate-content).
    The installer will:
 
@@ -131,13 +124,6 @@ huion-notes/
      ```bash
      ./start_app.py
      ```
-
-Local handwriting-recognition dependencies can be installed later with:
-
-```bash
-.venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch
-.venv/bin/pip install -e '.[handwriting]'
-```
 
 ## Command Line
 
@@ -192,7 +178,7 @@ Run the full automated test suite (220+ tests):
 * **Trademarks**: "Huion", "Huion Note", and related names, logos, or marks are registered trademarks of Shenzhen Huion Animation Technology Co., Ltd. All other company names, brand names, and product names mentioned in this project are trademarks or registered trademarks of their respective owners.
 
 ### 2. AI & Machine Learning Usage Notice
-* **Handwriting Recognition Models (HTR)**: This application integrates `Microsoft TrOCR` for offline handwriting transcription, alongside optional multimodal cloud transcription via Google's Gemini Vision API. Machine learning and vision transcription outputs are probabilistic approximations and may contain inaccuracies, misreadings, or hallucinations (particularly with cursive, mathematical notation, or low-contrast strokes). Users are advised to review transcribed Markdown files against their original vector SVG ink drawings.
+* **Handwriting Transcription**: This application sends only explicitly selected pages to Google's Gemini API. Transcription outputs are probabilistic approximations and may contain inaccuracies, misreadings, or hallucinations, particularly with cursive, mathematical notation, or low-contrast strokes. Users should review transcribed Markdown against the original vector SVG ink drawings.
 * **AI-Assisted Development**: Portions of this codebase, architecture specifications, and documentation were authored and refined with the assistance of artificial intelligence coding systems under human developer oversight.
 
 ### 3. Software Usage & Hardware Interoperability

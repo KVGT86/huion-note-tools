@@ -103,17 +103,17 @@ def test_live_image_adjustments_and_combined_pdf(pipeline, tmp_output):
     assert combined.read_bytes().startswith(b"%PDF")
 
 
-def test_desktop_local_transcription_uses_handwriting_model(pipeline, monkeypatch):
+def test_desktop_transcription_uses_gemini(pipeline, monkeypatch):
     from huion_note_pipeline import htr
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
     service = HuionApplication(pipeline, MagicMock())
     path = Path(service.save_live_page([[(1000, 1000, 4000)]]))
     note = next(n for n in service.load_notes() if n.svg_path == str(path))
-    local = MagicMock(return_value=("Meeting notes", "# Meeting notes\n"))
-    monkeypatch.setattr(htr, "convert_local", local)
-    monkeypatch.setattr(htr, "convert_tesseract", MagicMock(side_effect=AssertionError("legacy OCR used")))
+    gemini = MagicMock(return_value=("Meeting notes", "# Meeting notes\n"))
+    monkeypatch.setattr(htr, "convert_gemini", gemini)
 
     assert service.convert(note).markdown_path
-    local.assert_called_once()
+    gemini.assert_called_once_with(str(path), title=path.stem.replace("_", " ").title(), api_key="test-only")
 
 
 def test_coloured_ink_survives_recovery_and_all_exports(pipeline, tmp_output):

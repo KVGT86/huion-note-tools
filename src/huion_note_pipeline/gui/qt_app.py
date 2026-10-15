@@ -19,14 +19,13 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QStackedWidget, QSplitter, QListWidget, QListWidgetItem,
     QAbstractItemView, QLineEdit, QComboBox, QTextEdit, QTextBrowser, QTabWidget,
     QDialog, QDialogButtonBox, QFormLayout, QFileDialog, QMessageBox, QCheckBox,
-    QProgressBar, QMenu, QSizePolicy, QStyledItemDelegate, QRadioButton, QListView, QToolButton, QStatusBar, QColorDialog,
+    QProgressBar, QMenu, QSizePolicy, QStyledItemDelegate, QListView, QToolButton, QStatusBar, QColorDialog,
     QInputDialog, QGroupBox,
 )
 
 from huion.ink import PAGE_WIDTH, PAGE_HEIGHT, outline, svg_document, stroke_colors, validate_color, fit_image_rect
 from huion.ble import load_config
 from huion_note_pipeline import __version__
-from huion_note_pipeline import htr
 from huion_note_pipeline.application import HuionApplication
 from huion_note_pipeline.enums import NoteStatus
 
@@ -44,8 +43,8 @@ QStatusBar { background: #F2F1ED; border-top: 1px solid #D6D3CC; }
 QStatusBar::item { border: 0; }
 QToolButton { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 6px; }
 QToolButton:hover { background: #E4E1DA; }
-QToolButton:pressed, QToolButton:checked { background: #E4DEF0; border-color: #B8B3AA; }
-QToolButton:focus { border-color: #786995; }
+QToolButton:pressed, QToolButton:checked { background: #DCEAF2; border-color: #B8B3AA; }
+QToolButton:focus { border-color: #35698F; }
 QToolButton#utility { text-align: left; padding: 9px 10px; }
 QToolButton#inkChoice { padding-right: 18px; }
 QToolButton#inkChoice::menu-indicator { image: url(__CHEVRON__); width: 12px; height: 12px; subcontrol-position: right center; right: 3px; }
@@ -62,57 +61,55 @@ QPushButton { border: 1px solid #D6D3CC; border-radius: 6px; padding: 8px 12px; 
 QPushButton:hover { background: #EEECE6; border-color: #A6A198; }
 QPushButton:pressed { background: #DEDAD2; }
 QPushButton:checked { background: #25231F; color: #FFFFFF; font-weight: 600; border-color: #25231F; }
-QPushButton:focus { border: 2px solid #786995; padding: 7px 11px; }
+QPushButton:focus { border: 2px solid #35698F; padding: 7px 11px; }
 QPushButton:disabled { color: #817E78; }
 QPushButton#quiet { background: transparent; border-color: transparent; }
 QPushButton#quiet:hover { background: #E4E1DA; }
-QPushButton#quiet:focus { border-color: #786995; }
+QPushButton#quiet:focus { border-color: #35698F; }
 QPushButton#nav { text-align: left; border-color: transparent; background: transparent; padding: 10px 12px; }
 QPushButton#nav:hover { background: #E4E1DA; }
 QPushButton#nav:checked { background: #25231F; color: #FFFFFF; }
-QPushButton#nav:focus { border-color: #786995; }
+QPushButton#nav:focus { border-color: #35698F; }
 QPushButton#primary { background: #25231F; color: #FFFFFF; padding: 8px 14px; }
 QPushButton#primary:hover { background: #11100E; }
 QPushButton#primary:disabled { background: #E4E1DA; color: #625F59; }
 QPushButton#danger { color: #912D27; border-color: #D6B6B1; }
 QPushButton#danger:hover { background: #FAEDEB; }
-QLineEdit, QComboBox { background: #FFFFFF; border: 1px solid #B8B3AA; border-radius: 6px; padding: 9px 12px; selection-background-color: #E4DEF0; selection-color: #25231F; }
+QLineEdit, QComboBox { background: #FFFFFF; border: 1px solid #B8B3AA; border-radius: 6px; padding: 9px 12px; selection-background-color: #DCEAF2; selection-color: #25231F; }
 QLineEdit, QTextEdit { placeholder-text-color: #625F59; }
 QLineEdit:hover, QComboBox:hover { border-color: #81796B; }
-QLineEdit:focus, QComboBox:focus { border: 2px solid #786995; padding: 8px 11px; }
+QLineEdit:focus, QComboBox:focus { border: 2px solid #35698F; padding: 8px 11px; }
 QComboBox { padding-right: 36px; min-width: 112px; }
 QComboBox:focus { padding-right: 35px; }
 QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 30px; border: 0; }
 QComboBox::down-arrow { image: url(__CHEVRON__); width: 14px; height: 14px; }
-QComboBox QAbstractItemView { background: #FFFFFF; color: #25231F; border: 1px solid #A6A198; padding: 5px; outline: 0; selection-background-color: #E4DEF0; selection-color: #25231F; }
+QComboBox QAbstractItemView { background: #FFFFFF; color: #25231F; border: 1px solid #A6A198; padding: 5px; outline: 0; selection-background-color: #DCEAF2; selection-color: #25231F; }
 QComboBox QAbstractItemView::item { min-height: 32px; padding: 4px 10px; border: 0; border-radius: 4px; }
 QComboBox QAbstractItemView::item:hover { background: #EEECE6; }
-QComboBox QAbstractItemView::item:selected { background: #E4DEF0; color: #25231F; }
+QComboBox QAbstractItemView::item:selected { background: #DCEAF2; color: #25231F; }
 QListWidget { border: 1px solid transparent; background: #FFFFFF; }
-QListWidget:focus { border: 1px solid #786995; }
-QTextEdit, QTextBrowser { border: 0; padding: 16px; background: #FFFFFF; selection-background-color: #E4DEF0; selection-color: #25231F; }
+QListWidget:focus { border: 1px solid #35698F; }
+QTextEdit, QTextBrowser { border: 0; padding: 16px; background: #FFFFFF; selection-background-color: #DCEAF2; selection-color: #25231F; }
 QTabWidget::pane { border: 0; border-top: 1px solid #D6D3CC; }
 QTabBar::tab { padding: 11px 14px; background: #FFFFFF; color: #625F59; border-bottom: 2px solid transparent; }
 QTabBar::tab:hover { background: #F2F1ED; color: #25231F; }
 QTabBar::tab:selected { border-bottom: 2px solid #25231F; color: #25231F; font-weight: 600; }
 QSplitter::handle { background: #D6D3CC; width: 1px; }
-QCheckBox, QRadioButton { spacing: 10px; padding: 8px 0; }
+QCheckBox { spacing: 10px; padding: 8px 0; }
 QCheckBox::indicator { width: 17px; height: 17px; border: 1px solid #81796B; border-radius: 4px; background: #FFFFFF; }
 QCheckBox::indicator:checked { background: #25231F; border-color: #25231F; image: url(__CHECK__); }
-QRadioButton::indicator { width: 17px; height: 17px; border: 1px solid #81796B; border-radius: 9px; background: #FFFFFF; }
-QRadioButton::indicator:checked { background: #25231F; border: 4px solid #E4DEF0; width: 11px; height: 11px; }
-QCheckBox:focus, QRadioButton:focus { color: #57466F; }
-QCheckBox:disabled, QRadioButton:disabled { color: #817E78; }
+QCheckBox:focus { color: #315D78; }
+QCheckBox:disabled { color: #817E78; }
 QMenu { background: #FFFFFF; border: 1px solid #B8B3AA; padding: 6px; }
 QMenu::item { padding: 9px 16px; border-radius: 4px; }
-QMenu::item:selected { background: #E4DEF0; color: #25231F; }
+QMenu::item:selected { background: #DCEAF2; color: #25231F; }
 QScrollBar:vertical { background: #F2F1ED; width: 10px; margin: 0; }
 QScrollBar::handle:vertical { background: #B8B3AA; min-height: 28px; border-radius: 4px; }
 QScrollBar::handle:vertical:hover { background: #81796B; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 QProgressBar { border: 0; background: #E4E1DA; max-height: 3px; }
-QProgressBar::chunk { background: #786995; }
+QProgressBar::chunk { background: #4682B4; }
 """.replace("__CHEVRON__", (ICONS / "chevron-down.svg").as_posix()).replace("__CHECK__", (ICONS / "check-white.svg").as_posix())
 
 
@@ -190,8 +187,8 @@ class NoteDelegate(QStyledItemDelegate):
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QColor("#E4DEF0" if selected else WARM if hovered else PAPER))
-        painter.setPen(QPen(QColor("#786995" if option.state & QStyle.StateFlag.State_HasFocus else LINE), 1)
+        painter.setBrush(QColor("#DCEAF2" if selected else WARM if hovered else PAPER))
+        painter.setPen(QPen(QColor("#35698F" if option.state & QStyle.StateFlag.State_HasFocus else LINE), 1)
                        if selected else Qt.PenStyle.NoPen)
         painter.drawRoundedRect(QRectF(rect), 6, 6)
         title, _, meta = index.data().partition("\n")
@@ -205,7 +202,7 @@ class NoteDelegate(QStyledItemDelegate):
         font.setPixelSize(12)
         font.setWeight(QFont.Weight.Normal)
         painter.setFont(font)
-        painter.setPen(QColor("#51445F" if selected else MUTED))
+        painter.setPen(QColor("#2F5368" if selected else MUTED))
         painter.drawText(rect.adjusted(12, 39, -12, -10), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                          painter.fontMetrics().elidedText(meta, Qt.TextElideMode.ElideRight, rect.width() - 24))
         painter.restore()
@@ -537,7 +534,7 @@ class SettingsDialog(QDialog):
         form.addRow("Gemini API key", self.gemini)
         form.addRow("Obsidian vault", self.obsidian)
         form.addRow("", button("Choose vault…", self.choose_vault))
-        hint = label("Gemini receives only the pages you choose to transcribe.\nOn-device transcription does not upload your pages.", "muted")
+        hint = label("Gemini receives only the pages you explicitly choose to transcribe.", "muted")
         hint.setWordWrap(True)
         form.addRow(hint)
         form.addRow(button("Erase notebook memory…", parent.clear_device, role="danger"))
@@ -587,7 +584,7 @@ class HuionNoteWindow(QMainWindow):
                             (QPalette.ColorRole.Text, INK), (QPalette.ColorRole.WindowText, INK),
                             (QPalette.ColorRole.Button, PAPER), (QPalette.ColorRole.ButtonText, INK),
                             (QPalette.ColorRole.PlaceholderText, MUTED),
-                            (QPalette.ColorRole.Highlight, "#E4DEF0"), (QPalette.ColorRole.HighlightedText, INK)):
+                            (QPalette.ColorRole.Highlight, "#DCEAF2"), (QPalette.ColorRole.HighlightedText, INK)):
             palette.setColor(role, QColor(color))
         app.setPalette(palette)
         self.service = service or HuionApplication(pipeline, bridge)
@@ -1636,22 +1633,7 @@ class HuionNoteWindow(QMainWindow):
         layout.setSpacing(12)
         dialog.setMinimumWidth(440)
         layout.addWidget(label(f"Transcribe {len(notes)} page{'s' if len(notes) != 1 else ''}", "title"))
-        local_ready = htr.local_handwriting_available()
-        local = QRadioButton("Enhanced local handwriting")
-        local.setEnabled(local_ready)
-        local.setChecked(local_ready)
-        cloud_method = QRadioButton("Google Gemini")
-        cloud_method.setChecked(not local_ready)
-        layout.addWidget(local)
-        local_hint = label(
-            "Uses Microsoft TrOCR, tuned for handwriting. Pages stay on this computer."
-            if local_ready else
-            "Enhanced local handwriting is not installed. Install HuionNote's handwriting extra, then reopen the app.",
-            "muted")
-        local_hint.setWordWrap(True)
-        layout.addWidget(local_hint)
-        layout.addWidget(cloud_method)
-        cloud_hint = label("Sends selected pages to Google for transcription. Requires a Gemini API key in Settings.", "muted")
+        cloud_hint = label("Sends only these selected pages to Google Gemini. Requires an API key in Settings.", "muted")
         cloud_hint.setWordWrap(True)
         layout.addWidget(cloud_hint)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -1662,15 +1644,14 @@ class HuionNoteWindow(QMainWindow):
         layout.addWidget(buttons)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        cloud = cloud_method.isChecked()
-        if cloud and not self.service.gemini_key:
+        if not self.service.gemini_key:
             QMessageBox.information(self, "Add a Gemini key", "Add your Gemini API key in Settings, then try again.")
             return
         def work() -> list:
             failures = []
             for index, note in enumerate(notes):
                 try:
-                    self.service.convert(note, cloud=cloud)
+                    self.service.convert(note)
                 except Exception as exc:
                     failures.append(f"{Path(note.svg_path).name}: {exc}")
                 self.job_progress.emit(index + 1, len(notes))
