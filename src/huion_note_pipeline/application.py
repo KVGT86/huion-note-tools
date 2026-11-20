@@ -17,7 +17,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-from huion.ble import load_config, save_config
+from huion.ble import (
+    DEVICE_ADDRESS_KEY, IS_MACOS, configured_address, load_config, normalize_device_address, save_config,
+)
 from huion.ink import INK, stroke_colors, validate_color
 
 from . import htr
@@ -108,7 +110,7 @@ class HuionApplication:
 
     @property
     def mac_address(self) -> str:
-        return load_config().get("mac_address") or ""
+        return configured_address(load_config())
 
     @property
     def output_directory(self) -> str:
@@ -126,8 +128,8 @@ class HuionApplication:
                       pin: str | None = None, obsidian_vault: str | None = None) -> None:
         if not output_directory.strip():
             raise ValueError("Choose a notes folder.")
-        if mac_address and not re.fullmatch(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", mac_address):
-            raise ValueError("Use a Bluetooth address such as AA:BB:CC:DD:EE:FF, or leave it empty for discovery.")
+        if mac_address is not None:
+            mac_address = normalize_device_address(mac_address)
         if pin and not re.fullmatch(r"\d{6}", pin):
             raise ValueError("The optional notebook PIN must contain six digits.")
         vault = os.path.expanduser(obsidian_vault.strip()) if obsidian_vault else ""
@@ -143,7 +145,7 @@ class HuionApplication:
         cfg["output_dir"] = self.config.output_directory
         cfg["gemini_key"] = gemini_key
         if mac_address is not None:
-            cfg["mac_address"] = mac_address.upper()
+            cfg[DEVICE_ADDRESS_KEY] = mac_address
         if pin is not None:
             cfg["pin"] = pin
         if obsidian_vault is not None:
@@ -181,7 +183,7 @@ class HuionApplication:
             raise ValueError("Select saved pages from the library before deleting.")
         if any(n.status == NoteStatus.CONVERTING for n in notes):
             raise RuntimeError("Wait for transcription to finish before deleting these pages.")
-        if not shutil.which("gio"):
+        if not IS_MACOS and not shutil.which("gio"):
             raise RuntimeError("Desktop Trash is unavailable. Install the system GIO tools; no files were deleted.")
         paths = set()
         for note in notes:
@@ -197,7 +199,17 @@ class HuionApplication:
             self._live_id = None
             self.save_live_draft(strokes)
         try:
-            if paths:
+            if IS_MACOS:
+                from PySide6.QtCore import QFile
+
+                for path in paths:
+                    file = QFile(str(path))
+                    if not file.moveToTrash():
+                        raise RuntimeError(
+                            f"Could not move {path.name} to Trash: {file.errorString()} "
+                            "Files already moved can be restored from Trash."
+                        )
+            elif paths:
                 subprocess.run(["gio", "trash", "--", *(str(p) for p in paths)], check=True,
                                capture_output=True, text=True)
         except subprocess.CalledProcessError as exc:

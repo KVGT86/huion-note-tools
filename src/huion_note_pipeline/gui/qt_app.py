@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QInputDialog, QGroupBox,
 )
 
+from huion.ble import DEVICE_ADDRESS_LABEL
 from huion.ink import PAGE_WIDTH, PAGE_HEIGHT, outline, svg_document, stroke_colors, validate_color, fit_image_rect
 from huion.ble import load_config
 from huion_note_pipeline import __version__
@@ -528,7 +529,7 @@ class SettingsDialog(QDialog):
         self.obsidian.setPlaceholderText("Optional Obsidian vault folder")
         form.addRow("Notes folder", self.output)
         form.addRow("", button("Choose folder…", self.choose_folder))
-        form.addRow("Bluetooth address", self.mac)
+        form.addRow(DEVICE_ADDRESS_LABEL, self.mac)
         self.pin.setPlaceholderText("6 digits, if your notebook uses a PIN")
         form.addRow("Notebook PIN (optional)", self.pin)
         form.addRow("Gemini API key", self.gemini)

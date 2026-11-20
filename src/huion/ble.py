@@ -2,16 +2,24 @@ import asyncio
 import json
 import logging
 import os
-import struct
-from typing import Optional, Callable, Dict, Any, List, Tuple
+import re
+import sys
+from contextlib import suppress
+from uuid import UUID
+from typing import Optional, Callable, Dict, Any
 
-from dbus_fast.aio import MessageBus
-from dbus_fast import BusType, Message, MessageType, Variant
+if sys.platform.startswith("linux"):
+    from dbus_fast.aio import MessageBus
+    from dbus_fast import BusType, Message, MessageType, Variant
 
 log = logging.getLogger("huion.ble")
 
 BLUEZ = "org.bluez"
 CONFIG_PATH = os.path.expanduser("~/.config/huion/config.json")
+IS_MACOS = sys.platform == "darwin"
+DEVICE_ADDRESS_KEY = "bluetooth_uuid" if IS_MACOS else "mac_address"
+DEVICE_ADDRESS_LABEL = "Bluetooth UUID" if IS_MACOS else "Bluetooth MAC address"
+DEFAULT_OUTPUT_DIR = os.path.expanduser("~/HuionNotes" if IS_MACOS else "~/Documents/CYC-Caleb/00 Inbox/Raw PNGs")
 
 # Vendor GATT Service and Characteristics
 VENDOR_SVC_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
@@ -41,8 +49,8 @@ def load_config() -> Dict[str, Any]:
         except Exception:
             pass
     return {
-        "mac_address": "",
-        "output_dir": os.path.expanduser("~/Documents/CYC-Caleb/00 Inbox/Raw PNGs"),
+        DEVICE_ADDRESS_KEY: "",
+        "output_dir": DEFAULT_OUTPUT_DIR,
         "auto_pair": True,
         "pin": ""
     }
@@ -53,22 +61,135 @@ def save_config(config: Dict[str, Any]) -> None:
         json.dump(config, f, indent=2)
 
 
-class BleDeviceConnection:
-    """Manages Bluetooth Low Energy communication with Huion Note X10 via BlueZ D-Bus."""
+def configured_address(config: Dict[str, Any]) -> str:
+    return config.get(DEVICE_ADDRESS_KEY) or ""
+
+
+def _normalize_bluetooth_uuid(address: str) -> str:
+    try:
+        return str(UUID(address)).upper()
+    except ValueError:
+        raise ValueError("Use a Bluetooth UUID, or leave it empty for discovery.") from None
+
+
+def normalize_device_address(address: str) -> str:
+    address = address.strip()
+    if not address:
+        return ""
+    if IS_MACOS:
+        return _normalize_bluetooth_uuid(address)
+    if not re.fullmatch(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", address):
+        raise ValueError("Use a Bluetooth address such as AA:BB:CC:DD:EE:FF, or leave it empty for discovery.")
+    return address.upper()
+
+
+class _NotebookConnection:
+    """Protocol behavior shared by the BlueZ and CoreBluetooth connections."""
 
     def __init__(self, mac: Optional[str] = None):
         self.config = load_config()
-        self.mac = (mac or self.config.get("mac_address") or "").strip().upper()
+        self.mac = (mac or configured_address(self.config)).strip().upper()
+        self._on_notify_cb: Optional[Callable[[bytes], None]] = None
+        self._on_disconnect_cb: Optional[Callable[[], None]] = None
+        self._ka_task: Optional[asyncio.Task] = None
+        self._closed = False
+
+    async def enter_live_tablet_mode(self) -> None:
+        """Enable notifications and send the handshake that switches the X10 to live streaming."""
+        await self.start_notifications()
+        if self._ka_task:
+            self._ka_task.cancel()
+        # 3-step Pen Tablet Handshake:
+        await self.write_cmd(build_tablet_cmd(CMD_TABLET_NAME))
+        await asyncio.sleep(0.05)
+        await self.write_cmd(build_tablet_cmd(CMD_TABLET_INFO))
+        await asyncio.sleep(0.05)
+        await self.write_cmd(build_tablet_cmd(CMD_TABLET_VERIFY))
+        await asyncio.sleep(0.05)
+
+        self._ka_task = asyncio.create_task(self._live_keepalive_loop())
+        log.info("Entered live tablet streaming mode.")
+
+    async def enter_notes_mode(self) -> None:
+        """Keep the X10 paired without enabling live pen streaming."""
+        await self.start_notifications()
+        if self._ka_task:
+            self._ka_task.cancel()
+        await self.authenticate_notes_mode()
+        heartbeat = bytes([MARKER_START, CMD_NOTE_HEARTBEAT, 0x08, 0, 0, 0, 0, 0xED])
+        await self.write_cmd(heartbeat)
+        self._ka_task = asyncio.create_task(self._notes_keepalive_loop(heartbeat))
+
+    async def authenticate_notes_mode(self) -> None:
+        """Complete the X10 challenge-response before notebook-mode commands."""
+        from .sync_engine import OP_VERIFY_CONNECT, OP_VERIFY_RESULT, OP_VERIFY_PWD, build_frame, verify_response
+
+        queue: asyncio.Queue = asyncio.Queue()
+        previous = self._on_notify_cb
+        self._on_notify_cb = lambda data: queue.put_nowait(bytes(data))
+
+        async def _recv_op(op: int, timeout: float = 2.0) -> bytes:
+            async def _wait() -> bytes:
+                while True:
+                    data = await queue.get()
+                    if len(data) >= 2 and data[0] == MARKER_START and data[1] == op:
+                        return data
+            return await asyncio.wait_for(_wait(), timeout=timeout)
+
+        try:
+            for _ in range(5):
+                await self.write_cmd(build_frame(OP_VERIFY_CONNECT))
+                try:
+                    challenge = await _recv_op(OP_VERIFY_CONNECT)
+                    if len(challenge) < 6:
+                        continue
+                    response = verify_response(challenge[3], challenge[4], challenge[5])
+                    await self.write_cmd(build_frame(OP_VERIFY_RESULT, *response, 0))
+                    result = await _recv_op(OP_VERIFY_RESULT)
+                    if len(result) >= 4 and result[3] == 1:
+                        return
+                    pin = self.config.get("pin")
+                    if len(result) >= 4 and result[3] == 2 and isinstance(pin, str) and len(pin) == 6:
+                        encoded = [ord(pin[i]) + (104, 117, 105, 111, 110, 35)[i] for i in range(6)]
+                        await self.write_cmd(build_frame(OP_VERIFY_PWD, 1, *encoded[:3]))
+                        await self.write_cmd(build_frame(OP_VERIFY_PWD, 2, *encoded[3:]))
+                        result = await _recv_op(OP_VERIFY_RESULT)
+                        if len(result) >= 4 and result[3] == 1:
+                            return
+                except asyncio.TimeoutError:
+                    await asyncio.sleep(0.2)
+        finally:
+            self._on_notify_cb = previous
+        raise RuntimeError("Notebook authentication failed. Wake the X10 and make sure it is in Note Mode.")
+
+    async def _notes_keepalive_loop(self, heartbeat: bytes) -> None:
+        try:
+            while not self._closed:
+                await asyncio.sleep(5.0)
+                await self.write_cmd(heartbeat)
+        except asyncio.CancelledError:
+            pass
+
+    async def _live_keepalive_loop(self) -> None:
+        try:
+            while not self._closed:
+                await asyncio.sleep(5.0)
+                await self.write_cmd(build_tablet_cmd(CMD_TABLET_BATTERY))
+        except asyncio.CancelledError:
+            pass
+
+
+class BlueZConnection(_NotebookConnection):
+    """Manages Bluetooth Low Energy communication with Huion Note X10 via BlueZ D-Bus."""
+
+    def __init__(self, mac: Optional[str] = None):
+        super().__init__(mac)
         self.bus: Optional[MessageBus] = None
         self.adapter_path: Optional[str] = None
         self.dev_path: Optional[str] = None
         self.ffe1_path: Optional[str] = None
         self.ffe2_path: Optional[str] = None
         self.battery_path: Optional[str] = None
-        self._on_notify_cb: Optional[Callable[[bytes], None]] = None
-        self._on_disconnect_cb: Optional[Callable[[], None]] = None
-        self._ka_task: Optional[asyncio.Task] = None
-        self._closed = False
 
     async def connect_bus(self) -> None:
         if not self.bus:
@@ -329,90 +450,6 @@ class BleDeviceConnection:
                 if "InProgress" not in err and "AlreadyNotifying" not in err:
                     log.debug(f"StartNotify on {path}: {err}")
 
-    async def enter_live_tablet_mode(self) -> None:
-        """Enable notifications and send the handshake that switches the X10 to live streaming."""
-        await self.start_notifications()
-        if self._ka_task:
-            self._ka_task.cancel()
-        # 3-step Pen Tablet Handshake:
-        await self.write_cmd(build_tablet_cmd(CMD_TABLET_NAME))
-        await asyncio.sleep(0.05)
-        await self.write_cmd(build_tablet_cmd(CMD_TABLET_INFO))
-        await asyncio.sleep(0.05)
-        await self.write_cmd(build_tablet_cmd(CMD_TABLET_VERIFY))
-        await asyncio.sleep(0.05)
-
-        self._ka_task = asyncio.create_task(self._live_keepalive_loop())
-        log.info("Entered live tablet streaming mode.")
-
-    async def enter_notes_mode(self) -> None:
-        """Keep the X10 paired without enabling live pen streaming."""
-        await self.start_notifications()
-        if self._ka_task:
-            self._ka_task.cancel()
-        await self.authenticate_notes_mode()
-        heartbeat = bytes([MARKER_START, CMD_NOTE_HEARTBEAT, 0x08, 0, 0, 0, 0, 0xED])
-        await self.write_cmd(heartbeat)
-        self._ka_task = asyncio.create_task(self._notes_keepalive_loop(heartbeat))
-
-    async def authenticate_notes_mode(self) -> None:
-        """Complete the X10 challenge-response before notebook-mode commands."""
-        from .sync_engine import OP_VERIFY_CONNECT, OP_VERIFY_RESULT, OP_VERIFY_PWD, build_frame, verify_response
-
-        queue: asyncio.Queue = asyncio.Queue()
-        previous = self._on_notify_cb
-        self._on_notify_cb = lambda data: queue.put_nowait(bytes(data))
-
-        async def _recv_op(op: int, timeout: float = 2.0) -> bytes:
-            async def _wait() -> bytes:
-                while True:
-                    data = await queue.get()
-                    if len(data) >= 2 and data[0] == MARKER_START and data[1] == op:
-                        return data
-            return await asyncio.wait_for(_wait(), timeout=timeout)
-
-        try:
-            for _ in range(5):
-                await self.write_cmd(build_frame(OP_VERIFY_CONNECT))
-                try:
-                    challenge = await _recv_op(OP_VERIFY_CONNECT)
-                    if len(challenge) < 6:
-                        continue
-                    response = verify_response(challenge[3], challenge[4], challenge[5])
-                    await self.write_cmd(build_frame(OP_VERIFY_RESULT, *response, 0))
-                    result = await _recv_op(OP_VERIFY_RESULT)
-                    if len(result) >= 4 and result[3] == 1:
-                        return
-                    pin = self.config.get("pin")
-                    if len(result) >= 4 and result[3] == 2 and isinstance(pin, str) and len(pin) == 6:
-                        encoded = [ord(pin[i]) + (104, 117, 105, 111, 110, 35)[i] for i in range(6)]
-                        await self.write_cmd(build_frame(OP_VERIFY_PWD, 1, *encoded[:3]))
-                        await self.write_cmd(build_frame(OP_VERIFY_PWD, 2, *encoded[3:]))
-                        result = await _recv_op(OP_VERIFY_RESULT)
-                        if len(result) >= 4 and result[3] == 1:
-                            return
-                except asyncio.TimeoutError:
-                    await asyncio.sleep(0.2)
-        finally:
-            self._on_notify_cb = previous
-        raise RuntimeError("Notebook authentication failed. Wake the X10 and make sure it is in Note Mode.")
-
-    async def _notes_keepalive_loop(self, heartbeat: bytes) -> None:
-        try:
-            while not self._closed:
-                await asyncio.sleep(5.0)
-                await self.write_cmd(heartbeat)
-        except asyncio.CancelledError:
-            pass
-
-    async def _live_keepalive_loop(self) -> None:
-        try:
-            while not self._closed:
-                await asyncio.sleep(5.0)
-                await self.write_cmd(build_tablet_cmd(CMD_TABLET_BATTERY))
-        except asyncio.CancelledError:
-            pass
-
     async def close(self) -> None:
         self._closed = True
         if self._ka_task:
@@ -441,6 +478,118 @@ class BleDeviceConnection:
                 pass
 
 
+class CoreBluetoothConnection(_NotebookConnection):
+    """Use macOS peripheral UUIDs and Bleak's CoreBluetooth backend."""
+
+    def __init__(self, mac: Optional[str] = None):
+        super().__init__(mac)
+        self._client = None
+        self._notifying = set()
+
+    async def connect(self, retries: int = 4) -> bool:
+        from bleak import BleakClient, BleakScanner
+        from bleak.exc import BleakError
+
+        self._closed = False
+        if self.mac:
+            device = await BleakScanner.find_device_by_address(_normalize_bluetooth_uuid(self.mac), timeout=8.0)
+        else:
+            advertisements = await BleakScanner.discover(timeout=8.0, return_adv=True)
+            devices = [
+                device for device, advertisement in advertisements.values()
+                if any(name and any(marker in name.casefold() for marker in ("huion", "t218"))
+                       for name in (device.name, advertisement.local_name))
+            ]
+            if len(devices) > 1:
+                addresses = ", ".join(sorted(device.address.upper() for device in devices))
+                raise ConnectionError(f"Multiple Huion devices found. Set the Bluetooth UUID in Settings: {addresses}")
+            device = devices[0] if devices else None
+        if device is None:
+            raise TimeoutError("Huion Note X10 not found. Wake the notebook and check macOS Bluetooth permissions.")
+
+        def disconnected(client):
+            if client is not self._client:
+                return
+            self._notifying.clear()
+            if self._on_disconnect_cb:
+                self._on_disconnect_cb()
+
+        for attempt in range(retries):
+            client = BleakClient(device, disconnected_callback=disconnected, timeout=8.0)
+            self._client = client
+            try:
+                await client.connect()
+                if not all(client.services.get_characteristic(uuid) for uuid in (FFE1_UUID, FFE2_UUID)):
+                    raise ConnectionError("The connected device has no Huion notebook GATT characteristics.")
+                break
+            except (BleakError, TimeoutError):
+                with suppress(BleakError, TimeoutError):
+                    await client.disconnect()
+                if attempt + 1 == retries:
+                    raise
+                await asyncio.sleep(0.5)
+        else:
+            raise ConnectionError("No Bluetooth connection attempts were made.")
+
+        if not self.mac:
+            config = load_config()
+            config[DEVICE_ADDRESS_KEY] = device.address.upper()
+            save_config(config)
+        self.mac = device.address.upper()
+        return True
+
+    async def setup_signals(self, on_notify: Callable[[bytes], None], on_disconnect: Callable[[], None]) -> None:
+        self._on_notify_cb = on_notify
+        self._on_disconnect_cb = on_disconnect
+
+    async def start_notifications(self) -> None:
+        def value_changed(_characteristic, value):
+            if self._on_notify_cb:
+                self._on_notify_cb(bytes(value))
+
+        for uuid in (FFE1_UUID, FFE2_UUID):
+            characteristic = self._client.services.get_characteristic(uuid)
+            if uuid not in self._notifying and {"notify", "indicate"}.intersection(characteristic.properties):
+                await self._client.start_notify(characteristic, value_changed)
+                self._notifying.add(uuid)
+        if not self._notifying:
+            raise ConnectionError("The notebook does not expose a notification channel.")
+
+    async def write_cmd(self, data: bytes) -> bool:
+        if self._client is None or not self._client.is_connected:
+            return False
+        characteristic = self._client.services.get_characteristic(FFE2_UUID)
+        response = "write-without-response" not in characteristic.properties
+        await self._client.write_gatt_char(characteristic, data, response=response)
+        return True
+
+    async def read_battery(self) -> Optional[int]:
+        if self._client is None or not self._client.is_connected:
+            return None
+        try:
+            characteristic = self._client.services.get_characteristic(BATTERY_CHAR_UUID)
+            if characteristic:
+                value = await self._client.read_gatt_char(characteristic)
+                return value[0] if value else None
+        except Exception as exc:
+            log.debug("Battery read error: %s", exc)
+        return None
+
+    async def close(self) -> None:
+        self._closed = True
+        if self._ka_task:
+            self._ka_task.cancel()
+            await asyncio.gather(self._ka_task, return_exceptions=True)
+            self._ka_task = None
+        client, self._client = self._client, None
+        self._notifying.clear()
+        if client is not None:
+            await client.disconnect()
+
+
+BleDeviceConnection = CoreBluetoothConnection if IS_MACOS else BlueZConnection
+
+
 class HuionBleTransport:
     """Adapter implementing huion_notes.session.Transport using dynamic BleDeviceConnection."""
 
@@ -451,10 +600,19 @@ class HuionBleTransport:
         self._keepalive = keepalive
         self._ka_task: Optional[asyncio.Task] = None
 
+    @property
+    def mac(self) -> str:
+        return self.conn.mac
+
     async def connect(self) -> None:
-        await self.conn.connect()
-        await self.conn.setup_signals(self._on_value, self._on_disconnect)
-        await self.conn.start_notifications()
+        try:
+            await self.conn.connect()
+            await self.conn.setup_signals(self._on_value, self._on_disconnect)
+            await self.conn.start_notifications()
+        except (Exception, asyncio.CancelledError):
+            with suppress(Exception):
+                await self.close()
+            raise
         self._ka_task = asyncio.create_task(self._keepalive_loop())
 
     def _on_value(self, data: bytes) -> None:

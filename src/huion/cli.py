@@ -9,7 +9,11 @@ import sys
 import threading
 from typing import Optional, List
 
-from .ble import BleDeviceConnection, HuionBleTransport, load_config, save_config, CONFIG_PATH, build_tablet_cmd, CMD_TABLET_BATTERY
+from .ble import (
+    BleDeviceConnection, HuionBleTransport, load_config, save_config, CONFIG_PATH,
+    CMD_TABLET_BATTERY, DEFAULT_OUTPUT_DIR, DEVICE_ADDRESS_KEY, DEVICE_ADDRESS_LABEL,
+    IS_MACOS, build_tablet_cmd, configured_address, normalize_device_address,
+)
 from .models import (
     HuionDevice,
     ConnectionState,
@@ -63,8 +67,8 @@ def save_ledger(ledger: SyncLedger) -> None:
 async def cmd_status(args):
     """Query Huion Note X10 status (battery percentage, stored flash pages, pairing)."""
     cfg = load_config()
-    mac = args.mac or cfg.get("mac_address")
-    if not mac:
+    mac = args.mac or configured_address(cfg)
+    if not mac and not IS_MACOS:
         print("❌ Error: No MAC address configured. Run 'huion config --mac <MAC>' first.")
         return
 
@@ -75,9 +79,15 @@ async def cmd_status(args):
 
     try:
         # 1. Query Battery from BLE Connection
-        await asyncio.wait_for(conn.connect(), timeout=5.0)
+        if IS_MACOS:
+            await conn.connect(retries=1)
+        else:
+            await asyncio.wait_for(conn.connect(), timeout=5.0)
+        mac = conn.mac
         battery = await asyncio.wait_for(conn.read_battery(), timeout=3.0)
     except Exception as e:
+        if IS_MACOS:
+            raise SystemExit(f"Bluetooth status failed: {e}") from e
         log.debug(f"Battery query note: {e}")
     finally:
         try:
@@ -88,14 +98,14 @@ async def cmd_status(args):
     try:
         # 2. Query Stored Flash Pages from OfflineSyncManager
         sync_mgr = OfflineSyncManager(mac=mac, output_dir=cfg.get("output_dir", ""), pin=cfg.get("pin") or None)
-        stored_pages = await asyncio.wait_for(sync_mgr.probe_stored_page_count(), timeout=6.0)
+        stored_pages = await asyncio.wait_for(sync_mgr.probe_stored_page_count(), timeout=30.0 if IS_MACOS else 6.0)
     except Exception as e:
         log.debug(f"Flash probe note: {e}")
 
     print("\n" + "=" * 50)
     print("  📊 Huion Note X10 Status & Telemetry")
     print("=" * 50)
-    print(f"  Device MAC Address : {mac}")
+    print(f"  {DEVICE_ADDRESS_LABEL} : {mac}")
     
     if battery is not None:
         bat_icon = "🔋" if battery > 20 else "🪫"
@@ -117,16 +127,14 @@ async def cmd_status(args):
 async def cmd_sync(args):
     """Synchronize offline handwritten pages from tablet memory."""
     cfg = load_config()
-    default_png_inbox = os.path.expanduser("~/Documents/CYC-Caleb/00 Inbox/Raw PNGs")
-
     if args.out:
         out_dir = os.path.abspath(os.path.expanduser(args.out))
     else:
-        out_dir = cfg.get("output_dir") or default_png_inbox
+        out_dir = cfg.get("output_dir") or DEFAULT_OUTPUT_DIR
 
-    mac = args.mac or cfg.get("mac_address")
+    mac = args.mac or configured_address(cfg)
 
-    if not mac:
+    if not mac and not IS_MACOS:
         print("❌ Error: No MAC address configured. Run 'huion config --mac <MAC>' first.")
         return
 
@@ -179,7 +187,7 @@ def cmd_live(args):
     from .live_viewer import LiveViewerWindow
     cfg = load_config()
     out_dir = args.out or cfg.get("output_dir") or os.path.expanduser("~/HuionNotes")
-    mac = args.mac or cfg.get("mac_address")
+    mac = args.mac or configured_address(cfg)
 
     loop = asyncio.new_event_loop()
     conn_ref = [None]
@@ -253,11 +261,12 @@ def cmd_live(args):
 
 async def cmd_tablet(args):
     """Activate full screen digitizer / mouse takeover mode via uinput."""
-    import evdev
+    if not sys.platform.startswith("linux"):
+        raise SystemExit("System-wide digitizer mode requires Linux. Use 'huion live' or Live notebook in HuionNote.")
     from evdev import UInput, ecodes as e, AbsInfo
 
     cfg = load_config()
-    mac = args.mac or cfg.get("mac_address")
+    mac = args.mac or configured_address(cfg)
     orientation = getattr(args, "orientation", "landscape")
 
     # Setup uinput virtual tablet
@@ -338,7 +347,7 @@ async def cmd_tablet(args):
 async def cmd_clean(args):
     """Explicitly wipe offline stored notes from device flash storage."""
     cfg = load_config()
-    mac = args.mac or cfg.get("mac_address")
+    mac = args.mac or configured_address(cfg)
     
     if not args.yes:
         confirm = input("⚠️  Are you sure you want to delete all offline pages from the Huion Note? [y/N]: ")
@@ -357,8 +366,11 @@ async def cmd_clean(args):
 def cmd_config(args):
     """View or update CLI configuration."""
     cfg = load_config()
-    if args.mac:
-        cfg["mac_address"] = args.mac.strip().upper()
+    if args.mac is not None:
+        try:
+            cfg[DEVICE_ADDRESS_KEY] = normalize_device_address(args.mac) if IS_MACOS else args.mac.strip().upper()
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
     if args.out:
         cfg["output_dir"] = os.path.abspath(args.out)
     if args.pin:
@@ -367,7 +379,7 @@ def cmd_config(args):
     save_config(cfg)
     print("\n⚙️  Current Huion Note Configuration:")
     print(f"  Config File : {CONFIG_PATH}")
-    print(f"  MAC Address : {cfg.get('mac_address') or '(not set - auto-scanned)'}")
+    print(f"  {DEVICE_ADDRESS_LABEL} : {configured_address(cfg) or '(not set - auto-scanned)'}")
     print(f"  Output Dir  : {cfg.get('output_dir')}")
     print(f"  PIN Code    : {'******' if cfg.get('pin') else '(none)'}\n")
 
@@ -510,18 +522,18 @@ def cmd_trello(args):
 def main():
     parser = argparse.ArgumentParser(
         prog="huion",
-        description="Huion Note X10 Linux CLI & Live Visualizer"
+        description="Huion Note X10 CLI & Live Visualizer"
     )
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # status / stats
     p_status = subparsers.add_parser("status", aliases=["stats"], help="Show device battery, stored flash pages, and connection status")
-    p_status.add_argument("--mac", help="Device Bluetooth MAC address")
+    p_status.add_argument("--mac", "--device", help=DEVICE_ADDRESS_LABEL)
 
     # sync
     p_sync = subparsers.add_parser("sync", help="Sync offline notes to laptop (SVG, PNG, JSON)")
     p_sync.add_argument("-o", "--out", help="Output directory for notes")
-    p_sync.add_argument("--mac", help="Device Bluetooth MAC address")
+    p_sync.add_argument("--mac", "--device", help=DEVICE_ADDRESS_LABEL)
     p_sync.add_argument("--delete", action="store_true", help="Delete exported pages from device flash storage")
     p_sync.add_argument("--png-only", action="store_true", help="Only render and save PNG image files")
     p_sync.add_argument("--transcribe", action="store_true", help="Automatically transcribe synced notes to Obsidian Markdown via Gemini AI")
@@ -539,22 +551,22 @@ def main():
 
     # tablet (mouse / digitizer takeover)
     p_tablet = subparsers.add_parser("tablet", help="Activate full screen digitizer / mouse takeover mode")
-    p_tablet.add_argument("--mac", help="Device Bluetooth MAC address")
+    p_tablet.add_argument("--mac", "--device", help=DEVICE_ADDRESS_LABEL)
     p_tablet.add_argument("--orientation", choices=["landscape", "portrait"], default="landscape", help="Tablet orientation (default: landscape)")
 
     # live
     p_live = subparsers.add_parser("live", help="Open real-time drawing visualizer window")
     p_live.add_argument("-o", "--out", help="Output directory for live drawings")
-    p_live.add_argument("--mac", help="Device Bluetooth MAC address")
+    p_live.add_argument("--mac", "--device", help=DEVICE_ADDRESS_LABEL)
 
     # clean
     p_clean = subparsers.add_parser("clean", help="Purge offline stored notes from device memory")
     p_clean.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")
-    p_clean.add_argument("--mac", help="Device Bluetooth MAC address")
+    p_clean.add_argument("--mac", "--device", help=DEVICE_ADDRESS_LABEL)
 
     # config
     p_cfg = subparsers.add_parser("config", help="View or update settings")
-    p_cfg.add_argument("--mac", help="Set default Bluetooth MAC address")
+    p_cfg.add_argument("--mac", "--device", help=f"Set the default {DEVICE_ADDRESS_LABEL} (empty to auto-discover)")
     p_cfg.add_argument("--out", help="Set default output directory")
     p_cfg.add_argument("--pin", help="Set optional 6-digit device PIN")
 

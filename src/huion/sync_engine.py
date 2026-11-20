@@ -243,7 +243,7 @@ class OfflineSyncManager:
                     artifacts = self.renderer.export_all(strokes, folder, base_name, png_only=png_only)
 
                 page = NotePage(
-                    device=HuionDevice(mac_address=self.mac, connection_state=ConnectionState.CONNECTED),
+                    device=HuionDevice(mac_address=self.transport.mac, connection_state=ConnectionState.CONNECTED),
                     date_str=today,
                     page_number=page_num,
                     stroke_count=len(strokes),

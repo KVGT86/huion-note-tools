@@ -9,8 +9,9 @@ description = "BLE sync and note-to-markdown companion pipeline for Huion Note X
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "dbus-fast>=2.0.0",
-    "evdev>=1.7.0",
+    "dbus-fast>=2.0.0; sys_platform == 'linux'",
+    "evdev>=1.7.0; sys_platform == 'linux'",
+    "bleak>=1.1; sys_platform == 'darwin'",
     "PyYAML>=6.0",
     "Pillow>=10.0.0",
     "cairosvg>=2.7.0",
@@ -23,6 +24,7 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "hypothesis>=6.100",
+    "pytest-asyncio",
 ]
 
 [project.scripts]

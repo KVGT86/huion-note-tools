@@ -1,6 +1,6 @@
 # HuionNote
 
-A unified CLI, desktop application, real-time live digital canvas, and automated handwriting transcription pipeline for the **Huion Note X10** smart digital notebook on Linux (Zorin OS / Ubuntu / Debian).
+A unified CLI, desktop application, real-time live digital canvas, and automated handwriting transcription pipeline for the **Huion Note X10** smart digital notebook for Linux and Apple Silicon Macs.
 
 ![HuionNote](assets/huionnote.png)
 
@@ -29,9 +29,9 @@ Open **Notes**, sync the notebook, select a page, then use Handwriting, Transcri
 
 Transcription uses Google Gemini and requires an API key configured in Settings. Only pages you explicitly select are sent.
 
-The trash icon deletes selected local pages after confirmation, moving their associated handwriting, pen data, transcript and preview files to the desktop Trash. Restore them through your file manager. Notebook originals and the active live draft are kept; syncing can import notebook originals again. GIO's system `gio` command is required; deletion refuses to run without recoverable Trash support.
+The trash icon deletes selected local pages after confirmation, moving their associated handwriting, pen data, transcript and preview files to the desktop Trash. Restore them through your file manager. Notebook originals and the active live draft are kept; syncing can import notebook originals again. On Linux this requires the system `gio` command. On macOS the app uses Finder Trash.
 
-The footer estimates free X10 pages from the last complete device sync, using [Huion's stated capacity of up to 50 pages](https://www.huion.com/products/huion-note). It is not a byte-level or real-time reading. Repeated imports, live pages and local deletion do not change device capacity. Hover for the observation time; sync again after writing offline or using another app. Incomplete scans leave the previous estimate unchanged, and estimates are tied to the notebook's Bluetooth address.
+The footer estimates free X10 pages from the last complete device sync, using [Huion's stated capacity of up to 50 pages](https://www.huion.com/products/huion-note). It is not a byte-level or real-time reading. Repeated imports, live pages and local deletion do not change device capacity. Hover for the observation time; sync again after writing offline or using another app. Incomplete scans leave the previous estimate unchanged, and estimates are tied to the notebook's Bluetooth identifier.
 
 Dropdown menus, dialogs and selection states share a consistent Qt theme. The updated transparent logo appears in the app and desktop launcher.
 
@@ -65,7 +65,7 @@ Versions follow Semantic Versioning, commits use Conventional Commits, and relea
 huion-notes/
 ├── src/
 │   └── huion_note_pipeline/     # Core pipeline package
-│       ├── ble_bridge.py        # BlueZ / D-Bus BLE transport & pen streaming
+│       ├── ble_bridge.py        # Bluetooth transport & pen streaming
 │       ├── config.py            # Pipeline configuration
 │       ├── converter.py         # Coordinate conversion & SVG generator
 │       ├── editor.py            # Vector in-app note annotator & canvas
@@ -93,6 +93,29 @@ huion-notes/
 ---
 
 ## Installation & Setup
+
+### Apple Silicon macOS
+
+Install [Homebrew](https://brew.sh/) and run the following from a native Apple Silicon Terminal in this checkout:
+
+```bash
+./macos.sh setup
+./macos.sh
+```
+
+The setup installs Homebrew Python 3.13, Tk and Cairo, then installs HuionNote and its dependencies in `.venv`. Launch through `macos.sh` so CairoSVG can find Homebrew’s Cairo for PNG and PDF export. Notes default to `~/HuionNotes`. To move an existing library, copy its notes folder to the Mac and select that folder in HuionNote Settings.
+
+Turn on Bluetooth, wake the X10 and allow Bluetooth access when macOS prompts. If you previously denied access, open **System Settings → Privacy & Security → Bluetooth**, enable access for the terminal you launched from or Python, and relaunch. If Terminal is missing from the list and the app exits when Bluetooth starts, add Terminal using the **+** button, then relaunch. See [Bleak’s macOS permission troubleshooting](https://bleak.readthedocs.io/en/latest/troubleshooting.html). Leave **Bluetooth UUID** empty in HuionNote Settings to discover the notebook automatically. If multiple devices are found, HuionNote lists their UUIDs so you can specify one in Settings. macOS uses a per-Mac UUID, so a Linux MAC address will not identify the device here. Close other X10 apps or disconnect the notebook from another host before trying to connect.
+
+In **Device**, run **Sync** to copy a page and verify it opens in **Notes**. In **Live notebook**, write on the X10 and confirm the ink appears. These are separate checks for stored pages and live streaming. The system-wide `huion tablet` virtual digitizer remains Linux-only.
+
+```bash
+./macos.sh huion status
+./macos.sh huion sync
+./macos.sh test
+```
+
+### Linux
 
 1. **Clone the repository**:
    ```bash

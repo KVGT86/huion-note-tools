@@ -9,11 +9,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from huion.ble import DEVICE_ADDRESS_KEY
 from huion_note_pipeline.application import HuionApplication
 from huion_note_pipeline import application
 
 
 def test_trash_moves_companions_and_preserves_draft(pipeline, tmp_output, monkeypatch):
+    monkeypatch.setattr(application, "IS_MACOS", False)
     service = HuionApplication(pipeline, MagicMock())
     strokes = [[(1000, 1000, 3000), (2000, 2000, 4000)]]
     svg = Path(service.save_live_page(strokes))
@@ -45,6 +47,7 @@ def test_trash_moves_companions_and_preserves_draft(pipeline, tmp_output, monkey
 
 
 def test_trash_failure_keeps_files_and_registry(pipeline, tmp_output, monkeypatch):
+    monkeypatch.setattr(application, "IS_MACOS", False)
     service = HuionApplication(pipeline, MagicMock())
     svg = Path(service.save_live_page([[(1000, 1000, 2000)]]))
     note = next(n for n in service.load_notes() if n.svg_path == str(svg))
@@ -62,13 +65,13 @@ def test_trash_failure_keeps_files_and_registry(pipeline, tmp_output, monkeypatc
 
 def test_storage_is_latest_complete_device_count_not_local_total(pipeline, tmp_output, monkeypatch):
     config_file = tmp_output / "config.json"
-    cfg = {"mac_address": "AA:BB:CC:DD:EE:FF"}
+    cfg = {DEVICE_ADDRESS_KEY: "AA:BB:CC:DD:EE:FF"}
     monkeypatch.setattr(application, "load_config", lambda: cfg.copy())
     monkeypatch.setattr(application, "save_config", lambda value: (cfg.update(value), config_file.write_text("{}")))
     monkeypatch.setattr("huion.ble.CONFIG_PATH", str(config_file))
     bridge = SimpleNamespace(_stream_thread=None, _current_conn=None, last_storage_sync=None)
     def sync(**kwargs):
-        bridge.last_storage_sync = (cfg["mac_address"], 12)
+        bridge.last_storage_sync = (cfg[DEVICE_ADDRESS_KEY], 12)
         return [object()] * 12
     bridge.sync_offline_pages = sync
     service = HuionApplication(pipeline, bridge)
@@ -81,13 +84,13 @@ def test_storage_is_latest_complete_device_count_not_local_total(pipeline, tmp_o
     bridge.sync_offline_pages = lambda **kw: []  # Partial / uncertain sync.
     service.sync()
     assert service.device_snapshot().stored_pages == 12
-    cfg["mac_address"] = "11:22:33:44:55:66"
+    cfg[DEVICE_ADDRESS_KEY] = "11:22:33:44:55:66"
     assert service.device_snapshot().stored_pages is None
 
 
 def test_sync_and_free_space_uses_verified_transport_and_updates_storage(pipeline, tmp_output, monkeypatch):
     config_file = tmp_output / "config.json"
-    config = {"mac_address": "AA:BB:CC:DD:EE:FF"}
+    config = {DEVICE_ADDRESS_KEY: "AA:BB:CC:DD:EE:FF"}
     monkeypatch.setattr(application, "load_config", lambda: config.copy())
     monkeypatch.setattr(application, "save_config", lambda value: (config.update(value), config_file.write_text("{}")))
     monkeypatch.setattr("huion.ble.CONFIG_PATH", str(config_file))
@@ -312,8 +315,8 @@ def test_notes_mode_authenticates_before_heartbeat():
 
 
 def test_connection_retry_does_not_disconnect_resolving_device():
-    from dbus_fast import MessageType
-    from huion.ble import BleDeviceConnection
+    MessageType = pytest.importorskip("dbus_fast").MessageType
+    from huion.ble import BlueZConnection
     from unittest.mock import AsyncMock
 
     members = []
@@ -325,7 +328,7 @@ def test_connection_retry_does_not_disconnect_resolving_device():
                 return SimpleNamespace(message_type=MessageType.ERROR, error_name="org.bluez.Error.Failed")
             return SimpleNamespace(message_type=MessageType.METHOD_RETURN, error_name=None)
 
-    conn = BleDeviceConnection("AA:BB:CC:DD:EE:FF")
+    conn = BlueZConnection("AA:BB:CC:DD:EE:FF")
     conn.bus = Bus()
     conn.dev_path = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF"
     conn._get_device_prop = AsyncMock(side_effect=lambda name: name == "ServicesResolved")
