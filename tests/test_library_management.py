@@ -164,14 +164,17 @@ def test_storage_counts_occupied_slots_even_without_renderable_strokes(monkeypat
     assert manager.storage_page_count == 1
 
 
-def test_active_sync_records_storage_only_on_explicit_empty_reply(tmp_output):
+def test_active_sync_scans_slots_after_an_explicit_empty_reply(tmp_output):
     from huion_note_pipeline.ble_bridge import DeviceBridge
     from unittest.mock import AsyncMock
     bridge = DeviceBridge()
+    requested_slots = []
     async def write(frame):
         responses = {0x81: bytes([0xCD, 0x81, 6, 1, 2, 3]),
                      0x82: bytes([0xCD, 0x82, 4, 1]),
                      0x86: bytes([0xCD, 0x86, 5, 0, 0])}
+        if frame[1] == 0x86:
+            requested_slots.append(frame[3] | (frame[4] << 8))
         if frame[1] in responses:
             bridge._sync_queue.put_nowait(responses[frame[1]])
     bridge._current_conn = SimpleNamespace(mac="AA:BB:CC:DD:EE:FF", write_cmd=write,
@@ -179,6 +182,7 @@ def test_active_sync_records_storage_only_on_explicit_empty_reply(tmp_output):
                                            enter_notes_mode=AsyncMock())
     assert asyncio.run(bridge._async_sync_active_conn(str(tmp_output))) == []
     assert bridge.last_storage_sync == ("AA:BB:CC:DD:EE:FF", 0)
+    assert requested_slots == list(range(64))
     bridge._current_conn.authenticate_notes_mode.assert_awaited_once()
     bridge._current_conn.enter_notes_mode.assert_not_awaited()
     bridge._current_conn.enter_live_tablet_mode.assert_not_awaited()

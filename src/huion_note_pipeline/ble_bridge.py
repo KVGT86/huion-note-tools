@@ -246,6 +246,7 @@ class DeviceBridge:
             renderer = MultiFormatRenderer()
             vector_folder = None
             occupied_slots = 0
+            storage_scan_complete = True
             known_pages = existing_note_fingerprints(output_dir) if not delete_after_export else set()
 
             for page_idx in range(64):
@@ -258,12 +259,11 @@ class DeviceBridge:
                             count = data[3] | (data[4] << 8)
                             break
                 except asyncio.TimeoutError:
-                    break
+                    storage_scan_complete = False
+                    continue
 
                 if count == 0:
-                    if not delete_after_export:
-                        self.last_storage_sync = (conn.mac, occupied_slots)
-                    break
+                    continue
                 occupied_slots += 1
 
                 received_packets: Dict[int, bytes] = {}
@@ -343,6 +343,8 @@ class DeviceBridge:
 
             if delete_after_export and pages_saved:
                 await conn.write_cmd(build_frame(OP_CLEAR_CACHE))
+            elif storage_scan_complete:
+                self.last_storage_sync = (conn.mac, occupied_slots)
 
             return pages_saved
 
