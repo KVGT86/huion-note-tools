@@ -31,7 +31,7 @@ from huion_note_pipeline.application import HuionApplication
 from huion_note_pipeline.enums import NoteStatus
 
 INK, MUTED, PAPER, WARM, LINE = "#25231F", "#625F59", "#FFFFFF", "#F2F1ED", "#D6D3CC"
-ASSETS = Path(__file__).resolve().parents[3] / "assets"
+ASSETS = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3])) / "assets"
 ICONS = Path(__file__).resolve().parent / "icons" / "lucide"
 STYLE = """
 QWidget { color: #25231F; font-size: 14px; }

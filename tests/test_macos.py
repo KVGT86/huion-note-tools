@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -131,7 +132,6 @@ def test_macos_settings_accept_uuid_and_ignore_linux_address(pipeline, tmp_outpu
 
 
 def test_macos_delete_uses_finder_trash(pipeline, tmp_output, monkeypatch):
-    from pathlib import Path
     from PySide6 import QtCore
 
     service = application.HuionApplication(pipeline, Mock())
@@ -154,3 +154,13 @@ def test_macos_delete_uses_finder_trash(pipeline, tmp_output, monkeypatch):
     assert {Path(path).name for path in deleted} == {path.name for path in trash.iterdir()}
     assert not svg.exists()
     assert note not in pipeline.registry.all()
+
+
+def test_app_bundle_declares_bluetooth_usage_and_bundles_cairo():
+    project_root = Path(__file__).resolve().parents[1]
+    spec = (project_root / "packaging/macos/HuionNote.spec").read_text()
+    setup = (project_root / "macos.sh").read_text()
+    assert "NSBluetoothAlwaysUsageDescription" in spec
+    assert "libcairo.2.dylib" in spec
+    assert "~/Applications" not in setup
+    assert 'Path.home() / "Applications" / "HuionNote.app"' in setup

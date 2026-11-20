@@ -28,6 +28,7 @@ fi
 
 # CairoSVG loads Cairo at runtime. Include Homebrew's arm64 library directory.
 cairo_prefix="$(brew --prefix cairo)"
+export HUION_CAIRO_PREFIX="$cairo_prefix"
 export DYLD_FALLBACK_LIBRARY_PATH="$cairo_prefix/lib:${DYLD_FALLBACK_LIBRARY_PATH:-/usr/local/lib:/usr/lib}"
 
 case "${1:-}" in
@@ -41,7 +42,32 @@ from PySide6.QtWidgets import QApplication
 svg = b'<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'
 assert cairosvg.svg2png(bytestring=svg).startswith(b"\x89PNG")
 PYTHON
-        echo "Run ./macos.sh to open HuionNote."
+        iconset_dir="build/macos/HuionNote.iconset"
+        mkdir -p "$iconset_dir"
+        for size in 16 32 128 256 512; do
+            sips -z "$size" "$size" assets/huionnote.png --out "$iconset_dir/icon_${size}x${size}.png" >/dev/null
+            retina_size=$((size * 2))
+            sips -z "$retina_size" "$retina_size" assets/huionnote.png --out "$iconset_dir/icon_${size}x${size}@2x.png" >/dev/null
+        done
+        iconutil -c icns "$iconset_dir" -o build/macos/HuionNote.icns
+        .venv/bin/pyinstaller --noconfirm --clean packaging/macos/HuionNote.spec
+
+        user_applications_dir="$(.venv/bin/python -c 'from pathlib import Path; print(Path.home() / "Applications")')"
+        installed_app="$user_applications_dir/HuionNote.app"
+        mkdir -p "$user_applications_dir"
+        INSTALLED_APP="$installed_app" .venv/bin/python - <<'PYTHON'
+import os
+import shutil
+from pathlib import Path
+
+installed_app = Path(os.environ["INSTALLED_APP"])
+if installed_app.exists():
+    shutil.rmtree(installed_app)
+PYTHON
+        ditto dist/HuionNote.app "$installed_app"
+        codesign --force --deep --sign - "$installed_app"
+        echo "HuionNote is installed at $installed_app"
+        echo "Open it from Finder, Spotlight, or run ./macos.sh"
         ;;
     huion)
         shift
@@ -52,7 +78,12 @@ PYTHON
         exec .venv/bin/python -m pytest "$@"
         ;;
     "")
-        exec .venv/bin/huionnote
+        installed_app="$(.venv/bin/python -c 'from pathlib import Path; print(Path.home() / "Applications" / "HuionNote.app")')"
+        if [[ ! -d "$installed_app" ]]; then
+            echo "Run ./macos.sh setup to install HuionNote.app first." >&2
+            exit 1
+        fi
+        open "$installed_app"
         ;;
     *)
         echo "Usage: ./macos.sh [setup | huion COMMAND | test [PYTEST_OPTIONS]]" >&2

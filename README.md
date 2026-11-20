@@ -103,7 +103,7 @@ Install [Homebrew](https://brew.sh/) and run the following from a native Apple S
 ./macos.sh
 ```
 
-The setup installs Homebrew Python 3.13, Tk and Cairo, then installs HuionNote and its dependencies in `.venv`. Launch through `macos.sh` so CairoSVG can find Homebrew’s Cairo for PNG and PDF export. Notes default to `~/HuionNotes`. To move an existing library, copy its notes folder to the Mac and select that folder in HuionNote Settings.
+The setup installs Homebrew Python 3.13, Tk and Cairo, builds a native Apple Silicon app bundle, and installs it as `~/Applications/HuionNote.app`. Open **HuionNote** from Finder or Spotlight after setup. Running `./macos.sh` opens the installed app as well. Notes default to `~/HuionNotes`. To move an existing library, copy its notes folder to the Mac and select that folder in HuionNote Settings.
 
 Turn on Bluetooth, wake the X10 and allow Bluetooth access when macOS prompts. If you previously denied access, open **System Settings → Privacy & Security → Bluetooth**, enable access for the terminal you launched from or Python, and relaunch. If Terminal is missing from the list and the app exits when Bluetooth starts, add Terminal using the **+** button, then relaunch. See [Bleak’s macOS permission troubleshooting](https://bleak.readthedocs.io/en/latest/troubleshooting.html). Leave **Bluetooth UUID** empty in HuionNote Settings to discover the notebook automatically. If multiple devices are found, HuionNote lists their UUIDs so you can specify one in Settings. macOS uses a per-Mac UUID, so a Linux MAC address will not identify the device here. Close other X10 apps or disconnect the notebook from another host before trying to connect.
 

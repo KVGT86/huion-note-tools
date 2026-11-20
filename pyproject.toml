@@ -25,6 +25,7 @@ dev = [
     "pytest>=8.0",
     "hypothesis>=6.100",
     "pytest-asyncio",
+    "pyinstaller>=6.16; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
