@@ -1,9 +1,11 @@
 """A quiet notes workspace with a vector notebook view for screen-sharing."""
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 import threading
+from concurrent.futures import CancelledError
 from pathlib import Path
 from typing import Any
 
@@ -575,6 +577,7 @@ class HuionNoteWindow(QMainWindow):
     job_progress = Signal(int, int)
     job_done = Signal(str, object)
     job_failed = Signal(str, str)
+    job_cancelled = Signal()
 
     def __init__(self, pipeline=None, bridge=None, service=None, registry=None, config=None) -> None:
         super().__init__()
@@ -620,6 +623,8 @@ class HuionNoteWindow(QMainWindow):
         self.job_progress.connect(self.show_progress)
         self.job_done.connect(self.job_complete)
         self.job_failed.connect(self.job_error)
+        self.job_cancelled.connect(self.sync_cancelled)
+        self._sync_cancel_event = None
         self.connection_timer = QTimer(self)
         self.connection_timer.timeout.connect(self.refresh_connection)
         self.connection_timer.start(1500)
@@ -704,6 +709,9 @@ class HuionNoteWindow(QMainWindow):
         self.progress.setTextVisible(False)
         self.progress.hide()
         column.addWidget(self.progress)
+        self.cancel_sync_button = button("Cancel sync", self.cancel_sync)
+        self.cancel_sync_button.hide()
+        column.addWidget(self.cancel_sync_button)
         self.pages = QStackedWidget()
         self.pages.addWidget(self.library_page())
         self.pages.addWidget(self.live_page())
@@ -1482,6 +1490,8 @@ class HuionNoteWindow(QMainWindow):
         def worker() -> None:
             try:
                 self.job_done.emit(name, work())
+            except (asyncio.CancelledError, CancelledError):
+                self.job_cancelled.emit()
             except Exception as exc:
                 self.job_failed.emit(name, str(exc))
         threading.Thread(target=worker, daemon=True).start()
@@ -1497,6 +1507,8 @@ class HuionNoteWindow(QMainWindow):
 
     def finish_job(self) -> None:
         self._busy = False
+        self._sync_cancel_event = None
+        self.cancel_sync_button.hide()
         self.progress.hide()
         self.sync_button.setEnabled(True)
         self.select_all_button.setEnabled(bool(self.note_list.count()))
@@ -1552,7 +1564,27 @@ class HuionNoteWindow(QMainWindow):
         QMessageBox.warning(self, f"{name} could not finish", message)
 
     def sync_now(self) -> None:
-        self.run_job("Sync", lambda: self.service.sync(progress=self.job_progress.emit))
+        self.start_sync_job("Sync", self.service.sync)
+
+    def start_sync_job(self, name, work) -> None:
+        if self._busy:
+            return
+        cancel_event = threading.Event()
+        self._sync_cancel_event = cancel_event
+        self.cancel_sync_button.setEnabled(True)
+        self.cancel_sync_button.show()
+        self.run_job(name, lambda: work(progress=self.job_progress.emit, cancel_event=cancel_event))
+
+    def cancel_sync(self) -> None:
+        if self._sync_cancel_event is not None:
+            self._sync_cancel_event.set()
+            self.cancel_sync_button.setEnabled(False)
+            self.log("Cancelling sync…")
+
+    def sync_cancelled(self) -> None:
+        self.finish_job()
+        self.load_library()
+        self.log("Sync cancelled. Previously saved pages are kept.")
 
     def confirm_sync_and_clear(self) -> None:
         if self._busy:
@@ -1568,7 +1600,7 @@ class HuionNoteWindow(QMainWindow):
         confirmation.setDefaultButton(QMessageBox.StandardButton.Cancel)
         confirmation.exec()
         if confirmation.clickedButton() == proceed:
-            self.run_job("Sync & free space", lambda: self.service.sync_and_free_space(progress=self.job_progress.emit))
+            self.start_sync_job("Sync & free space", self.service.sync_and_free_space)
 
     def export_selected(self) -> None:
         notes = self.selected_notes()

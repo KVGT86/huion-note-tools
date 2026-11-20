@@ -227,6 +227,10 @@ class OfflineSyncManager:
 
             for page_idx in range(64):
                 count, raw_packets = await self._fetch_page(page_idx)
+                if not self._storage_scan_complete:
+                    raise TimeoutError(
+                        f"The notebook did not finish sending storage slot {page_idx + 1}. Previously saved pages are kept."
+                    )
                 if count > 0:
                     occupied_slots += 1
                 if count == 0 or not raw_packets:

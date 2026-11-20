@@ -190,12 +190,32 @@ class DeviceBridge:
                     pass
 
     def sync_offline_pages(self, output_dir: str, mac: str = "25:6C:BB:8D:19:50", delete_after_export: bool = False,
-                           force_vectors: bool = False, progress=None) -> List[Any]:
+                           force_vectors: bool = False, progress=None, cancel_event=None) -> List[Any]:
         """Synchronizes offline notes over the existing active Bluetooth connection without disconnecting."""
         self.last_storage_sync = None
+        async def cancellable(transfer):
+            if cancel_event is None:
+                return await transfer
+            async def watch_cancel():
+                while not cancel_event.is_set():
+                    await asyncio.sleep(0.1)
+
+            task = asyncio.create_task(transfer)
+            watcher = asyncio.create_task(watch_cancel())
+            try:
+                await asyncio.wait((task, watcher), return_when=asyncio.FIRST_COMPLETED)
+                if task.done():
+                    return task.result()
+                raise asyncio.CancelledError()
+            finally:
+                task.cancel()
+                watcher.cancel()
+                await asyncio.gather(task, watcher, return_exceptions=True)
+
         if self._current_loop and self._is_connected and self._current_conn and self._current_loop.is_running():
+            transfer = self._async_sync_active_conn(output_dir, delete_after_export, force_vectors, progress)
             fut = asyncio.run_coroutine_threadsafe(
-                self._async_sync_active_conn(output_dir, delete_after_export, force_vectors, progress),
+                cancellable(transfer) if cancel_event is not None else transfer,
                 self._current_loop
             )
             # Each BLE receive inside the coroutine has its own bounded timeout.
@@ -204,7 +224,7 @@ class DeviceBridge:
             return fut.result()
         else:
             sync_mgr = OfflineSyncManager(mac=mac, output_dir=output_dir, pin=load_config().get("pin") or None)
-            pages = asyncio.run(sync_mgr.run_sync(delete_after_export=delete_after_export, force_vectors=force_vectors, progress=progress))
+            pages = asyncio.run(cancellable(sync_mgr.run_sync(delete_after_export=delete_after_export, force_vectors=force_vectors, progress=progress)))
             if sync_mgr.storage_page_count is not None and not delete_after_export:
                 self.last_storage_sync = (sync_mgr.transport.mac, sync_mgr.storage_page_count)
             return pages
@@ -227,18 +247,27 @@ class DeviceBridge:
         sync_q: asyncio.Queue = asyncio.Queue()
         self._sync_queue = sync_q
 
-        async def _recv(timeout: float = 3.0) -> bytes:
-            return await asyncio.wait_for(sync_q.get(), timeout=timeout)
+        loop = asyncio.get_running_loop()
+
+        async def _recv(deadline: float) -> bytes:
+            packet = await asyncio.wait_for(sync_q.get(), timeout=deadline - loop.time())
+            if packet is None:
+                raise ConnectionError("The notebook disconnected during sync. Previously saved pages are kept.")
+            return packet
+
+        async def send(frame: bytes) -> None:
+            if await asyncio.wait_for(conn.write_cmd(frame), timeout=8) is False:
+                raise ConnectionError("The notebook rejected a Bluetooth write. Previously saved pages are kept.")
 
         try:
             # 1. Challenge-Response Handshake
-            await conn.authenticate_notes_mode()
+            await asyncio.wait_for(conn.authenticate_notes_mode(), timeout=25)
 
             # 2. Distance and limits
-            await conn.write_cmd(build_frame(OP_MAX_DATA))
+            await send(build_frame(OP_MAX_DATA))
             await asyncio.sleep(0.05)
-            await conn.write_cmd(build_frame(OP_SET_DISTANCE, 1, 3, 0, 0))
-            await conn.write_cmd(build_frame(OP_SET_DISTANCE, 3, 2, 0, 0))
+            await send(build_frame(OP_SET_DISTANCE, 1, 3, 0, 0))
+            await send(build_frame(OP_SET_DISTANCE, 3, 2, 0, 0))
 
             # 3. Pull pages
             pages_saved: List[NotePage] = []
@@ -246,21 +275,22 @@ class DeviceBridge:
             renderer = MultiFormatRenderer()
             vector_folder = None
             occupied_slots = 0
-            storage_scan_complete = True
             known_pages = existing_note_fingerprints(output_dir) if not delete_after_export else set()
 
             for page_idx in range(64):
-                await conn.write_cmd(bytes([START, OP_REQUEST_OFFLINE_DATA, 0x08, page_idx & 0xFF, (page_idx >> 8) & 0xFF, 0, 0, END]))
+                await send(bytes([START, OP_REQUEST_OFFLINE_DATA, 0x08, page_idx & 0xFF, (page_idx >> 8) & 0xFF, 0, 0, END]))
                 count = 0
                 try:
+                    deadline = loop.time() + 3
                     while True:
-                        data = await _recv(timeout=3.0)
+                        data = await _recv(deadline)
                         if len(data) >= 5 and data[0] == START and data[1] == OP_REQUEST_OFFLINE_DATA and data[2] == 0x05:
                             count = data[3] | (data[4] << 8)
                             break
                 except asyncio.TimeoutError:
-                    storage_scan_complete = False
-                    continue
+                    raise TimeoutError(
+                        f"The notebook did not answer for storage slot {page_idx + 1}. Previously saved pages are kept."
+                    ) from None
 
                 if count == 0:
                     continue
@@ -268,9 +298,10 @@ class DeviceBridge:
 
                 received_packets: Dict[int, bytes] = {}
                 consecutive_timeouts = 0
+                deadline = loop.time() + 3
                 while len(received_packets) < count:
                     try:
-                        data = await _recv(timeout=3.0)
+                        data = await _recv(deadline)
                         if len(data) >= 6 and data[0] == START and data[1] in (OP_RETURN_OFFLINE_DATA, OP_GET_PAGE_PACKAGE):
                             seq = data[3] | (data[4] << 8)
                             if 1 <= seq <= count:
@@ -278,6 +309,7 @@ class DeviceBridge:
                                 received_packets[seq] = data
                                 if made_progress:
                                     consecutive_timeouts = 0
+                                    deadline = loop.time() + 3
                     except asyncio.TimeoutError:
                         consecutive_timeouts += 1
                         if consecutive_timeouts > 8:
@@ -286,8 +318,9 @@ class DeviceBridge:
                         if not missing:
                             break
                         for idx in missing[:15]:
-                            await conn.write_cmd(bytes([START, OP_GET_PAGE_PACKAGE, 0x08, page_idx & 0xFF, (page_idx >> 8) & 0xFF, idx & 0xFF, (idx >> 8) & 0xFF, END]))
+                            await send(bytes([START, OP_GET_PAGE_PACKAGE, 0x08, page_idx & 0xFF, (page_idx >> 8) & 0xFF, idx & 0xFF, (idx >> 8) & 0xFF, END]))
                         await asyncio.sleep(0.2)
+                        deadline = loop.time() + 3
 
                 ordered = [received_packets[s] for s in sorted(received_packets)]
                 all_points: List[Any] = []
@@ -338,12 +371,12 @@ class DeviceBridge:
                 if delete_after_export:
                     if not verify_export_artifacts(artifacts):
                         raise RuntimeError("A transferred page could not be verified locally. It remains on the notebook.")
-                    await conn.write_cmd(bytes([START, OP_DELETE_PAGE, 0x08, page_idx & 0xFF, (page_idx >> 8) & 0xFF, 0, 0, END]))
+                    await send(bytes([START, OP_DELETE_PAGE, 0x08, page_idx & 0xFF, (page_idx >> 8) & 0xFF, 0, 0, END]))
                     await asyncio.sleep(0.1)
 
             if delete_after_export and pages_saved:
-                await conn.write_cmd(build_frame(OP_CLEAR_CACHE))
-            elif storage_scan_complete:
+                await send(build_frame(OP_CLEAR_CACHE))
+            elif not delete_after_export:
                 self.last_storage_sync = (conn.mac, occupied_slots)
 
             return pages_saved
@@ -353,7 +386,7 @@ class DeviceBridge:
             # Return to the mode requested by the current workspace.
             try:
                 if self._mode == "tablet":
-                    await conn.enter_live_tablet_mode()
+                    await asyncio.wait_for(conn.enter_live_tablet_mode(), timeout=8)
             except Exception:
                 pass
 
@@ -398,8 +431,16 @@ class DeviceBridge:
                     await conn.connect()
                     if not active():
                         break
-                    await conn.setup_signals(self._handle_raw_data, lambda: disconnected_event.set())
+                    def on_disconnect():
+                        disconnected_event.set()
+                        if self._current_conn is conn and self._sync_queue is not None:
+                            self._sync_queue.put_nowait(None)
+
+                    await conn.setup_signals(self._handle_raw_data, on_disconnect)
                     while active() and not disconnected_event.is_set():
+                        if self._sync_queue is not None:
+                            await asyncio.sleep(0.1)
+                            continue
                         desired_mode = self._mode
                         if desired_mode != active_mode:
                             self._is_connected = False
@@ -459,6 +500,11 @@ class DeviceBridge:
             finally:
                 if generation == self._worker_generation:
                     self._worker_task = None
+                pending = asyncio.all_tasks(loop)
+                for pending_task in pending:
+                    pending_task.cancel()
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                 loop.close()
 
         thread = threading.Thread(target=_runner, daemon=True)

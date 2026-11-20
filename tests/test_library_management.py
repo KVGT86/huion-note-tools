@@ -188,6 +188,26 @@ def test_active_sync_scans_slots_after_an_explicit_empty_reply(tmp_output):
     bridge._current_conn.enter_live_tablet_mode.assert_not_awaited()
 
 
+def test_cancel_sync_waits_for_transfer_cleanup(monkeypatch, tmp_output):
+    from huion_note_pipeline import ble_bridge
+
+    cancel = threading.Event()
+    cleaned_up = threading.Event()
+
+    async def transfer(**kwargs):
+        try:
+            cancel.set()
+            await asyncio.Future()
+        finally:
+            await asyncio.sleep(0)
+            cleaned_up.set()
+
+    monkeypatch.setattr(ble_bridge, "OfflineSyncManager", lambda **kwargs: SimpleNamespace(run_sync=transfer))
+    with pytest.raises(asyncio.CancelledError):
+        ble_bridge.DeviceBridge().sync_offline_pages(str(tmp_output), cancel_event=cancel)
+    assert cleaned_up.is_set()
+
+
 def test_bridge_enters_live_handshake_only_for_tablet_mode(monkeypatch):
     from huion_note_pipeline import ble_bridge
     calls = []

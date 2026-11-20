@@ -440,13 +440,14 @@ class HuionApplication:
     def on_hardware_button(self, callback: Any) -> None:
         self.bridge.on_hardware_button(callback)
 
-    def sync(self, progress=None) -> list[Any]:
+    def sync(self, progress=None, cancel_event=None) -> list[Any]:
         pages = self.bridge.sync_offline_pages(
             output_dir=self.output_directory,
             mac=self.mac_address,
             delete_after_export=False,
             force_vectors=True,
             progress=progress,
+            cancel_event=cancel_event,
         )
         reading = getattr(self.bridge, "last_storage_sync", None)
         if isinstance(reading, tuple) and len(reading) == 2:
@@ -463,7 +464,7 @@ class HuionApplication:
                 logging.getLogger(__name__).warning("Storage estimate could not be saved; synced pages are safe.")
         return pages
 
-    def sync_and_free_space(self, progress=None) -> list[Any]:
+    def sync_and_free_space(self, progress=None, cancel_event=None) -> list[Any]:
         """Save each page before the transport deletes that verified device page."""
         pages = self.bridge.sync_offline_pages(
             output_dir=self.output_directory,
@@ -471,6 +472,7 @@ class HuionApplication:
             delete_after_export=True,
             force_vectors=True,
             progress=progress,
+            cancel_event=cancel_event,
         )
         self._storage = {"address": self.mac_address.upper(), "stored_pages": 0,
                          "checked_at": datetime.now().astimezone().strftime("%d %b %Y, %H:%M")}
