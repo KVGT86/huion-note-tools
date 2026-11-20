@@ -198,11 +198,10 @@ class DeviceBridge:
                 self._async_sync_active_conn(output_dir, delete_after_export, force_vectors, progress),
                 self._current_loop
             )
-            try:
-                return fut.result(timeout=45.0)
-            except TimeoutError as exc:
-                fut.cancel()
-                raise TimeoutError("Notebook sync timed out. Already saved pages are kept; reconnect and try again.") from exc
+            # Each BLE receive inside the coroutine has its own bounded timeout.
+            # A whole-notebook deadline cuts off healthy multi-page transfers,
+            # especially over CoreBluetooth where pages can take several seconds.
+            return fut.result()
         else:
             sync_mgr = OfflineSyncManager(mac=mac, output_dir=output_dir, pin=load_config().get("pin") or None)
             pages = asyncio.run(sync_mgr.run_sync(delete_after_export=delete_after_export, force_vectors=force_vectors, progress=progress))
@@ -217,7 +216,7 @@ class DeviceBridge:
             OP_RETURN_OFFLINE_DATA, OP_GET_PAGE_PACKAGE, OP_DELETE_PAGE, OP_CLEAR_CACHE,
             OP_MAX_DATA, OP_SET_DISTANCE, build_frame, decode_packet,
             points_to_strokes, NotePage, HuionDevice, ConnectionState, PageSyncStatus,
-            MultiFormatRenderer, next_sync_folder, verify_export_artifacts
+            MultiFormatRenderer, existing_note_fingerprints, next_sync_folder, verify_export_artifacts
         )
         import datetime
 
@@ -246,6 +245,8 @@ class DeviceBridge:
             today = datetime.date.today().isoformat()
             renderer = MultiFormatRenderer()
             vector_folder = None
+            occupied_slots = 0
+            known_pages = existing_note_fingerprints(output_dir) if not delete_after_export else set()
 
             for page_idx in range(64):
                 await conn.write_cmd(bytes([START, OP_REQUEST_OFFLINE_DATA, 0x08, page_idx & 0xFF, (page_idx >> 8) & 0xFF, 0, 0, END]))
@@ -261,21 +262,25 @@ class DeviceBridge:
 
                 if count == 0:
                     if not delete_after_export:
-                        self.last_storage_sync = (conn.mac, len(pages_saved))
+                        self.last_storage_sync = (conn.mac, occupied_slots)
                     break
+                occupied_slots += 1
 
                 received_packets: Dict[int, bytes] = {}
-                retries = 0
+                consecutive_timeouts = 0
                 while len(received_packets) < count:
                     try:
                         data = await _recv(timeout=3.0)
                         if len(data) >= 6 and data[0] == START and data[1] in (OP_RETURN_OFFLINE_DATA, OP_GET_PAGE_PACKAGE):
                             seq = data[3] | (data[4] << 8)
                             if 1 <= seq <= count:
+                                made_progress = seq not in received_packets
                                 received_packets[seq] = data
+                                if made_progress:
+                                    consecutive_timeouts = 0
                     except asyncio.TimeoutError:
-                        retries += 1
-                        if retries > 5:
+                        consecutive_timeouts += 1
+                        if consecutive_timeouts > 8:
                             raise TimeoutError("The notebook stopped sending this page. Previously saved pages are kept.")
                         missing = [s for s in range(1, count + 1) if s not in received_packets]
                         if not missing:
@@ -290,6 +295,11 @@ class DeviceBridge:
                     all_points.extend(decode_packet(pkt))
 
                 strokes = points_to_strokes(all_points)
+                if not strokes:
+                    continue
+                fingerprint = renderer.fingerprint(strokes)
+                if fingerprint in known_pages:
+                    continue
                 page_num = len(pages_saved) + 1
 
                 is_raw_png = not force_vectors and ("Raw PNGs" in output_dir or output_dir.rstrip("/").endswith("Raw PNGs"))
@@ -321,6 +331,7 @@ class DeviceBridge:
                     artifacts=artifacts
                 )
                 pages_saved.append(page)
+                known_pages.add(fingerprint)
                 if progress:
                     progress(len(pages_saved), 0)
 

@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import hashlib
+import json
 import logging
 import os
 import struct
@@ -37,6 +38,23 @@ def next_sync_folder(output_dir: str, date: str) -> str:
             return folder
         except FileExistsError:
             index += 1
+
+
+def existing_note_fingerprints(output_dir: str) -> Set[str]:
+    """Identify pages already imported, including files made by older releases."""
+    fingerprints: Set[str] = set()
+    root = Path(output_dir).expanduser()
+    if not root.is_dir():
+        return fingerprints
+    for path in root.rglob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            strokes = data.get("strokes") if isinstance(data, dict) else None
+            if isinstance(strokes, list) and strokes:
+                fingerprints.add(MultiFormatRenderer.data_fingerprint(strokes))
+        except (OSError, ValueError, TypeError):
+            continue
+    return fingerprints
 
 # Protocol Constants
 START = 0xCD
@@ -205,6 +223,7 @@ class OfflineSyncManager:
             saved_names: Set[str] = set()
             vector_folder = None
             occupied_slots = 0
+            known_pages = existing_note_fingerprints(self.output_dir) if not delete_after_export and not png_only else set()
 
             for page_idx in range(64):
                 count, raw_packets = await self._fetch_page(page_idx)
@@ -220,6 +239,11 @@ class OfflineSyncManager:
 
                 strokes = points_to_strokes(all_points)
                 if not strokes:
+                    continue
+
+                fingerprint = self.renderer.fingerprint(strokes)
+                if fingerprint in known_pages:
+                    log.info(f"Page slot {page_idx + 1}: already imported; continuing.")
                     continue
 
                 page_num = len(pages_saved) + 1
@@ -251,6 +275,7 @@ class OfflineSyncManager:
                     artifacts=artifacts
                 )
                 pages_saved.append(page)
+                known_pages.add(fingerprint)
                 if progress:
                     progress(len(pages_saved), 0)
                 saved_target = artifacts.png_filename if png_only else (artifacts.svg_filename or artifacts.png_filename)
@@ -348,17 +373,20 @@ class OfflineSyncManager:
 
         log.info(f"Page slot {page_idx + 1}: Downloading {count} vector data packets...")
         received_packets: Dict[int, bytes] = {}
-        retries = 0
+        consecutive_timeouts = 0
 
-        while len(received_packets) < count and retries < 5:
+        while len(received_packets) < count and consecutive_timeouts < 8:
             try:
                 data = await self.transport.recv(timeout=2.0)
                 if len(data) >= 6 and data[0] == START and data[1] in (OP_RETURN_OFFLINE_DATA, OP_GET_PAGE_PACKAGE):
                     seq = data[3] | (data[4] << 8)
                     if 1 <= seq <= count:
+                        made_progress = seq not in received_packets
                         received_packets[seq] = data
+                        if made_progress:
+                            consecutive_timeouts = 0
             except asyncio.TimeoutError:
-                retries += 1
+                consecutive_timeouts += 1
                 missing = [s for s in range(1, count + 1) if s not in received_packets]
                 if not missing:
                     break

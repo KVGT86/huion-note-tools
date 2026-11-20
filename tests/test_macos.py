@@ -162,5 +162,6 @@ def test_app_bundle_declares_bluetooth_usage_and_bundles_cairo():
     setup = (project_root / "macos.sh").read_text()
     assert "NSBluetoothAlwaysUsageDescription" in spec
     assert "libcairo.2.dylib" in spec
+    assert "assets/huionnote-macos.png" in setup
     assert "~/Applications" not in setup
     assert 'Path.home() / "Applications" / "HuionNote.app"' in setup

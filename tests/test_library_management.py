@@ -129,6 +129,28 @@ def test_page_header_timeout_is_not_empty_storage():
     assert manager.storage_page_count is None
 
 
+def test_page_packet_retry_budget_resets_after_progress():
+    from huion.sync_engine import OfflineSyncManager
+    from unittest.mock import AsyncMock
+
+    header = bytes([0xCD, 0x86, 0x05, 3, 0])
+    packet = lambda sequence: bytes([0xCD, 0x87, 0, sequence, 0, 0])
+    responses = [
+        header,
+        packet(1),
+        asyncio.TimeoutError(), asyncio.TimeoutError(), asyncio.TimeoutError(),
+        packet(2),
+        asyncio.TimeoutError(), asyncio.TimeoutError(), asyncio.TimeoutError(),
+        packet(3),
+    ]
+    manager = OfflineSyncManager("AA:BB:CC:DD:EE:FF", "/tmp/unused")
+    manager.transport = SimpleNamespace(send=AsyncMock(), recv=AsyncMock(side_effect=responses))
+
+    count, packets = asyncio.run(manager._fetch_page(0))
+    assert count == 3
+    assert [packet[3] for packet in packets] == [1, 2, 3]
+
+
 def test_storage_counts_occupied_slots_even_without_renderable_strokes(monkeypatch):
     from huion.sync_engine import OfflineSyncManager
     from unittest.mock import AsyncMock

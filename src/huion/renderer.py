@@ -1,4 +1,5 @@
 import json
+import hashlib
 from pathlib import Path
 from typing import List
 
@@ -15,6 +16,22 @@ class MultiFormatRenderer:
     def svg(strokes: List[Stroke]) -> str:
         return svg_document([[(p.x, p.y, p.pressure) for p in s.points] for s in strokes])
 
+    @staticmethod
+    def stroke_data(strokes: List[Stroke]) -> list[dict]:
+        return [{"pen_type": stroke.pen_type.value, "points": [
+            {"x": point.x, "y": point.y, "pressure": point.pressure,
+             "tilt_x": point.tilt_x, "tilt_y": point.tilt_y}
+            for point in stroke.points]} for stroke in strokes]
+
+    @staticmethod
+    def data_fingerprint(stroke_data: list[dict]) -> str:
+        canonical = json.dumps(stroke_data, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def fingerprint(cls, strokes: List[Stroke]) -> str:
+        return cls.data_fingerprint(cls.stroke_data(strokes))
+
     def render_svg(self, strokes: List[Stroke], target_path: str) -> bool:
         Path(target_path).parent.mkdir(parents=True, exist_ok=True)
         Path(target_path).write_text(self.svg(strokes), encoding="utf-8")
@@ -25,9 +42,7 @@ class MultiFormatRenderer:
         data = {
             "page_width": self.PAGE_WIDTH, "page_height": self.PAGE_HEIGHT,
             "max_pressure": 8192, "stroke_count": len(strokes),
-            "strokes": [{"pen_type": s.pen_type.value, "points": [
-                {"x": p.x, "y": p.y, "pressure": p.pressure, "tilt_x": p.tilt_x, "tilt_y": p.tilt_y}
-                for p in s.points]} for s in strokes],
+            "strokes": self.stroke_data(strokes),
         }
         Path(target_path).write_text(json.dumps(data, indent=2), encoding="utf-8")
         return True

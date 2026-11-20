@@ -198,7 +198,7 @@ def test_cloud_transcription_handles_empty_and_failed_responses(monkeypatch):
         htr.run_ocr_gemini("fake.svg", api_key="test-only")
 
 
-def test_sync_timeout_cancels_the_pending_transfer(monkeypatch):
+def test_sync_allows_multi_page_transfer_to_finish_without_global_deadline(monkeypatch):
     from huion_note_pipeline.ble_bridge import DeviceBridge
     bridge = DeviceBridge()
     bridge._current_loop = MagicMock()
@@ -206,11 +206,23 @@ def test_sync_timeout_cancels_the_pending_transfer(monkeypatch):
     bridge._is_connected = True
     bridge._async_sync_active_conn = lambda *args: object()
     future = MagicMock()
-    future.result.side_effect = TimeoutError()
+    future.result.return_value = [object()] * 9
     monkeypatch.setattr("asyncio.run_coroutine_threadsafe", lambda *args: future)
-    with pytest.raises(TimeoutError, match="Already saved pages"):
-        bridge.sync_offline_pages("not-used")
-    future.cancel.assert_called_once()
+    assert len(bridge.sync_offline_pages("not-used")) == 9
+    future.result.assert_called_once_with()
+    future.cancel.assert_not_called()
+
+
+def test_existing_page_fingerprint_prevents_resume_duplicates(tmp_path):
+    from huion.models import PenPoint, Stroke
+    from huion.renderer import MultiFormatRenderer
+    from huion.sync_engine import existing_note_fingerprints
+
+    strokes = [Stroke(points=[PenPoint(x=100, y=200, pressure=300)])]
+    renderer = MultiFormatRenderer()
+    renderer.render_json(strokes, str(tmp_path / "previous-sync.json"))
+
+    assert existing_note_fingerprints(str(tmp_path)) == {renderer.fingerprint(strokes)}
 
 
 def test_launchers_share_saved_folder_and_environment_override(monkeypatch, tmp_path):
